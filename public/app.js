@@ -554,13 +554,19 @@ function renderOrderDetailsModal(orderId, milestonesData, transactionsData) {
     const content = document.getElementById('order-details-content');
     const milestones = milestonesData.milestones || [];
     const transactions = transactionsData.transactions || [];
+    const summary = milestonesData.summary || { 
+        total_milestones: 0, 
+        completed: 0, 
+        pending: 0, 
+        locked: 0 
+    };
     
     content.innerHTML = `
         <div class="details-section">
-            <h3>Milestones (${milestonesData.summary.total_milestones})</h3>
-            <p><strong>Completed:</strong> ${milestonesData.summary.completed_milestones} | 
-               <strong>Pending:</strong> ${milestonesData.summary.pending_milestones} | 
-               <strong>Locked:</strong> ${milestonesData.summary.locked_milestones}</p>
+            <h3>Milestones (${summary.total_milestones})</h3>
+            <p><strong>Completed:</strong> ${summary.completed} | 
+               <strong>Pending:</strong> ${summary.pending} | 
+               <strong>Locked:</strong> ${summary.locked}</p>
             
             ${milestones.map(m => `
                 <div class="milestone-card">
