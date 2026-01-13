@@ -776,11 +776,164 @@ function renderStatusChart(breakdown) {
     container.innerHTML = Object.entries(breakdown)
         .sort((a, b) => b[1] - a[1])
         .map(([status, count]) => `
-            <div class="status-item">
-                <span class="status-item-label">${status.replace(/_/g, ' ')}</span>
-                <span class="status-item-value">${count}</span>
+            <div class="status-item-compact">
+                <div class="status-label">${status.replace(/_/g, ' ')}</div>
+                <div class="status-count">${count}</div>
             </div>
         `).join('');
+    
+    // Render visual charts
+    renderDonutChart(breakdown);
+    renderFinancialBarChart();
+    renderMilestoneProgressChart();
+}
+
+function renderDonutChart(breakdown) {
+    const container = document.getElementById('status-donut-chart');
+    const total = Object.values(breakdown).reduce((a, b) => a + b, 0);
+    const colors = ['#ff8a33', '#ff6b1a', '#ffa04d', '#ffb366', '#ffc280'];
+    
+    let cumulativePercent = 0;
+    const segments = Object.entries(breakdown)
+        .sort((a, b) => b[1] - a[1])
+        .map(([status, count], i) => {
+            const percent = (count / total) * 100;
+            const segment = {
+                status: status.replace(/_/g, ' '),
+                count,
+                percent: percent.toFixed(1),
+                color: colors[i % colors.length],
+                offset: cumulativePercent
+            };
+            cumulativePercent += percent;
+            return segment;
+        });
+    
+    container.innerHTML = `
+        <svg viewBox="0 0 200 200" class="donut-svg">
+            <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(255,138,51,0.1)" stroke-width="40"/>
+            ${segments.map(seg => {
+                const angle = (seg.percent / 100) * 360;
+                const startAngle = (seg.offset / 100) * 360 - 90;
+                const endAngle = startAngle + angle;
+                const largeArc = angle > 180 ? 1 : 0;
+                
+                const x1 = 100 + 80 * Math.cos(startAngle * Math.PI / 180);
+                const y1 = 100 + 80 * Math.sin(startAngle * Math.PI / 180);
+                const x2 = 100 + 80 * Math.cos(endAngle * Math.PI / 180);
+                const y2 = 100 + 80 * Math.sin(endAngle * Math.PI / 180);
+                
+                return `
+                    <path d="M 100 100 L ${x1} ${y1} A 80 80 0 ${largeArc} 1 ${x2} ${y2} Z" 
+                          fill="${seg.color}" opacity="0.8"/>
+                `;
+            }).join('')}
+            <circle cx="100" cy="100" r="50" fill="#0a0a0a"/>
+            <text x="100" y="95" text-anchor="middle" fill="#ff8a33" font-size="28" font-weight="700">${total}</text>
+            <text x="100" y="115" text-anchor="middle" fill="#888" font-size="12">Orders</text>
+        </svg>
+        <div class="chart-legend">
+            ${segments.map(seg => `
+                <div class="legend-item">
+                    <span class="legend-color" style="background: ${seg.color}"></span>
+                    <span class="legend-text">${seg.status}</span>
+                    <span class="legend-value">${seg.count} (${seg.percent}%)</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderFinancialBarChart() {
+    const container = document.getElementById('financial-bar-chart');
+    const locked = parseFloat(document.getElementById('stats-funds-locked').textContent.replace(/[$,]/g, '')) || 0;
+    const released = parseFloat(document.getElementById('stats-funds-released').textContent.replace(/[$,]/g, '')) || 0;
+    const escrow = parseFloat(document.getElementById('stats-escrow-balance').textContent.replace(/[$,]/g, '')) || 0;
+    
+    const max = Math.max(locked, released, escrow, 1);
+    
+    container.innerHTML = `
+        <div class="bar-chart-container">
+            <div class="bar-item">
+                <div class="bar-label">Locked</div>
+                <div class="bar-wrapper">
+                    <div class="bar-fill" style="width: ${(locked/max)*100}%">
+                        <span class="bar-value">$${locked.toLocaleString()}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="bar-item">
+                <div class="bar-label">Released</div>
+                <div class="bar-wrapper">
+                    <div class="bar-fill" style="width: ${(released/max)*100}%; background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);">
+                        <span class="bar-value">$${released.toLocaleString()}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="bar-item">
+                <div class="bar-label">Escrow</div>
+                <div class="bar-wrapper">
+                    <div class="bar-fill" style="width: ${(escrow/max)*100}%; background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);">
+                        <span class="bar-value">$${escrow.toLocaleString()}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderMilestoneProgressChart() {
+    const container = document.getElementById('milestone-progress-chart');
+    const completed = parseInt(document.getElementById('stats-milestone-breakdown').textContent.match(/Complete: (\d+)/)?.[1] || 0);
+    const pending = parseInt(document.getElementById('stats-milestone-breakdown').textContent.match(/Pending: (\d+)/)?.[1] || 0);
+    const locked = parseInt(document.getElementById('stats-milestone-breakdown').textContent.match(/Locked: (\d+)/)?.[1] || 0);
+    const total = completed + pending + locked;
+    
+    const completedPercent = total > 0 ? (completed / total) * 100 : 0;
+    const pendingPercent = total > 0 ? (pending / total) * 100 : 0;
+    const lockedPercent = total > 0 ? (locked / total) * 100 : 0;
+    
+    container.innerHTML = `
+        <div class="progress-ring-container">
+            <svg viewBox="0 0 200 200" class="progress-svg">
+                <circle cx="100" cy="100" r="85" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="30"/>
+                <circle cx="100" cy="100" r="85" fill="none" stroke="#22c55e" stroke-width="30" 
+                        stroke-dasharray="${completedPercent * 5.34} 534" 
+                        stroke-dashoffset="0" 
+                        transform="rotate(-90 100 100)"
+                        stroke-linecap="round"/>
+                <circle cx="100" cy="100" r="85" fill="none" stroke="#fbbf24" stroke-width="30" 
+                        stroke-dasharray="${pendingPercent * 5.34} 534" 
+                        stroke-dashoffset="${-completedPercent * 5.34}" 
+                        transform="rotate(-90 100 100)"
+                        stroke-linecap="round"/>
+                <circle cx="100" cy="100" r="85" fill="none" stroke="#6b7280" stroke-width="30" 
+                        stroke-dasharray="${lockedPercent * 5.34} 534" 
+                        stroke-dashoffset="${-(completedPercent + pendingPercent) * 5.34}" 
+                        transform="rotate(-90 100 100)"
+                        stroke-linecap="round"/>
+                <text x="100" y="95" text-anchor="middle" fill="#ff8a33" font-size="32" font-weight="700">${total}</text>
+                <text x="100" y="120" text-anchor="middle" fill="#888" font-size="14">Total Milestones</text>
+            </svg>
+            <div class="progress-stats">
+                <div class="progress-stat">
+                    <span class="progress-dot" style="background: #22c55e"></span>
+                    <span class="progress-label">Completed</span>
+                    <span class="progress-value">${completed}</span>
+                </div>
+                <div class="progress-stat">
+                    <span class="progress-dot" style="background: #fbbf24"></span>
+                    <span class="progress-label">Pending</span>
+                    <span class="progress-value">${pending}</span>
+                </div>
+                <div class="progress-stat">
+                    <span class="progress-dot" style="background: #6b7280"></span>
+                    <span class="progress-label">Locked</span>
+                    <span class="progress-value">${locked}</span>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function renderRoleSpecificStats(orders) {
