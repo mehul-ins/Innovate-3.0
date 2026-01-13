@@ -135,11 +135,20 @@ exports.completeMilestone = async (req, res) => {
     }
 
     // Find milestone with order details
-    const milestone = await Milestone.findById(id).populate('order_id', 'order_id value');
+    const milestone = await Milestone.findById(id).populate('order_id', 'order_id value status');
     if (!milestone) {
       return res.status(404).json({
         success: false,
         message: 'Milestone not found'
+      });
+    }
+
+    // Phase 7: Prevent actions on CLOSED orders
+    if (milestone.order_id.status === ORDER_STATUS.CLOSED) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot complete milestone. Order is CLOSED. No further actions allowed.',
+        order_status: milestone.order_id.status
       });
     }
 
@@ -201,10 +210,22 @@ exports.completeMilestone = async (req, res) => {
       order: milestone.order + 1
     });
 
+    let orderCompletionMessage = '';
+
     if (nextMilestone) {
       // Unlock the next milestone by changing status from LOCKED to PENDING
       nextMilestone.status = MILESTONE_STATUS.PENDING;
       await nextMilestone.save();
+    } else {
+      // Phase 7: All milestones completed - mark order as COMPLETED
+      // This indicates that all deliverables have been fulfilled
+      // Order is now ready for loan repayment and final closure
+      const order = await Order.findById(milestone.order_id._id);
+      if (order && order.status === ORDER_STATUS.APPROVED) {
+        order.status = ORDER_STATUS.COMPLETED;
+        await order.save();
+        orderCompletionMessage = 'All milestones completed. Order marked as COMPLETED. Ready for repayment and closure.';
+      }
     }
 
     res.status(200).json({
@@ -225,7 +246,7 @@ exports.completeMilestone = async (req, res) => {
         status: nextMilestone.status,
         message: `${nextMilestone.name} milestone is now PENDING and ready for completion`
       } : {
-        message: 'All milestones completed. Order fulfillment complete.'
+        message: orderCompletionMessage || 'All milestones completed. Order fulfillment complete.'
       },
       transaction: {
         type: TRANSACTION_TYPE.RELEASE,

@@ -156,6 +156,15 @@ exports.approveOrder = async (req, res) => {
       });
     }
 
+    // Phase 7: Prevent actions on CLOSED orders
+    if (order.status === ORDER_STATUS.CLOSED) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot approve order. Order is CLOSED. No further actions allowed.',
+        current_status: order.status
+      });
+    }
+
     // Check if order is in PENDING_VERIFICATION state
     if (order.status !== ORDER_STATUS.PENDING_VERIFICATION) {
       return res.status(400).json({
@@ -235,6 +244,135 @@ exports.approveOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error approving order',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Repay order and close
+ * @route   PATCH /api/orders/:id/repay
+ * @access  Private (ADMIN only)
+ * 
+ * Phase 7: Order Closure Logic
+ * 
+ * Repayment Flow:
+ * 1. All milestones must be COMPLETED (order status = COMPLETED)
+ * 2. Admin marks loan as REPAID
+ * 3. Order status changes to CLOSED
+ * 4. Once CLOSED, no further actions allowed on this order
+ * 
+ * Mock Repayment:
+ * - Simulates loan repayment without real financial transactions
+ * - Verifies all milestones completed before closure
+ * - Prevents premature closure if deliverables not fulfilled
+ * 
+ * Validations:
+ * - Order must be in COMPLETED status (all milestones done)
+ * - Cannot repay orders that are not completed
+ * - Cannot re-close already closed orders
+ * - Immutable once CLOSED
+ */
+exports.repayOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate order ID format
+    if (!id || id.length !== 24) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order ID'
+      });
+    }
+
+    // Find order
+    const order = await Order.findById(id).populate('created_by', 'name email');
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Check if order is already CLOSED
+    if (order.status === ORDER_STATUS.CLOSED) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order is already closed. No further actions allowed.',
+        current_status: order.status
+      });
+    }
+
+    // Check if order is COMPLETED (all milestones done)
+    if (order.status !== ORDER_STATUS.COMPLETED) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot close order. Order status must be COMPLETED (all milestones fulfilled). Current status: ${order.status}`,
+        current_status: order.status,
+        required_status: ORDER_STATUS.COMPLETED,
+        hint: 'Complete all milestones before marking order as repaid.'
+      });
+    }
+
+    // Verify all milestones are COMPLETED
+    const milestones = await Milestone.find({ order_id: order._id });
+    const incompleteMilestones = milestones.filter(m => m.status !== MILESTONE_STATUS.COMPLETED);
+    
+    if (incompleteMilestones.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot close order. Some milestones are not completed.',
+        incomplete_milestones: incompleteMilestones.map(m => ({
+          name: m.name,
+          status: m.status
+        }))
+      });
+    }
+
+    // Mark order as CLOSED (loan repaid)
+    // Phase 7: Once CLOSED, order is immutable and archived
+    // No further milestone completions, approvals, or modifications allowed
+    order.status = ORDER_STATUS.CLOSED;
+    await order.save();
+
+    // Get final escrow balance summary
+    const transactions = await Transaction.find({ order_id: order._id });
+    const totalLocked = transactions
+      .filter(t => t.type === TRANSACTION_TYPE.LOCK)
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalReleased = transactions
+      .filter(t => t.type === TRANSACTION_TYPE.RELEASE)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    res.status(200).json({
+      success: true,
+      message: 'Order closed successfully. Loan marked as REPAID. No further actions allowed.',
+      order: {
+        id: order._id,
+        order_id: order.order_id,
+        buyer_name: order.buyer_name,
+        value: order.value,
+        status: order.status,
+        funds_locked: order.funds_locked,
+        closed_at: new Date()
+      },
+      escrow_summary: {
+        total_locked: totalLocked,
+        total_released: totalReleased,
+        final_balance: totalLocked - totalReleased,
+        message: totalLocked === totalReleased 
+          ? 'All funds properly accounted for and released.' 
+          : `Warning: Escrow imbalance detected. Locked: $${totalLocked}, Released: $${totalReleased}`
+      },
+      milestones_summary: {
+        total_milestones: milestones.length,
+        completed: milestones.filter(m => m.status === MILESTONE_STATUS.COMPLETED).length
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error closing order',
       error: error.message
     });
   }
