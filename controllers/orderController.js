@@ -114,14 +114,57 @@ exports.createOrder = async (req, res) => {
       funds_locked: false
     });
 
-    // Create notification for the lender
+    // Create notification for the lender: NEW_ORDER_REQUEST
     await Notification.create({
       user_id: lender_id,
       order_id: order._id,
-      type: 'FUNDING_REQUEST',
-      message: `New funding request from ${req.user.name} for order ${order_id} ($${numericValue.toLocaleString()})`,
+      type: 'NEW_ORDER_REQUEST',
+      message: `New order request from ${req.user.name} for order ${order_id} ($${numericValue.toLocaleString()})`,
       read: false
     });
+    // Optionally: notify admin if needed (not required by prompt)
+// Utility: create notification
+async function createNotification({ user_id, order_id, milestone_id, type, message }) {
+  await Notification.create({
+    user_id,
+    order_id,
+    milestone_id,
+    type,
+    message,
+    read: false
+  });
+}
+
+// Add notification logic to milestone approval, proof submission, and next milestone unlock
+
+// Example: When a milestone is approved (notify supplier)
+// exports.approveMilestone = async (req, res) => { ... }
+// After approving milestone:
+// await createNotification({
+//   user_id: supplier_id,
+//   order_id,
+//   milestone_id,
+//   type: 'MILESTONE_APPROVED',
+//   message: `Milestone '${milestoneName}' approved for order ${orderId}`
+// });
+
+// Example: When proof is submitted (notify lender/admin)
+// await createNotification({
+//   user_id: lender_id,
+//   order_id,
+//   milestone_id,
+//   type: 'PROOF_SUBMITTED',
+//   message: `Proof submitted for milestone '${milestoneName}' in order ${orderId}`
+// });
+
+// Example: When next milestone is unlocked (notify supplier)
+// await createNotification({
+//   user_id: supplier_id,
+//   order_id,
+//   milestone_id: nextMilestoneId,
+//   type: 'NEXT_MILESTONE_UNLOCKED',
+//   message: `Next milestone '${nextMilestoneName}' unlocked for order ${orderId}`
+// });
 
     res.status(201).json({
       success: true,

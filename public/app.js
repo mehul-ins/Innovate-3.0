@@ -1,3 +1,7 @@
+// Notifications State
+let notifications = [];
+let notificationInterval = null;
+
 // API Configuration
 const API_BASE = 'http://localhost:5002/api';
 
@@ -9,6 +13,10 @@ let selectedMilestone = null;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
+        // Start notification polling if dashboard is shown
+        if (savedToken && savedUser && document.getElementById('dashboard-section')) {
+            startNotificationPolling();
+        }
     // Check if user is already logged in (SPA dashboard only)
     const savedToken = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('currentUser');
@@ -132,12 +140,63 @@ function logout() {
 
 // Dashboard Display
 function showDashboard() {
+        startNotificationPolling();
+        stopNotificationPolling();
     document.getElementById('login-section').style.display = 'none';
     document.getElementById('dashboard-section').style.display = 'block';
     document.getElementById('user-role').textContent = `Role: ${currentUser.role}`;
     
     renderActionButtons();
     loadOrders();
+    loadNotifications();
+}
+// Notification Polling
+function startNotificationPolling() {
+    if (notificationInterval) clearInterval(notificationInterval);
+    loadNotifications();
+    notificationInterval = setInterval(loadNotifications, 10000); // every 10s
+}
+
+function stopNotificationPolling() {
+    if (notificationInterval) clearInterval(notificationInterval);
+}
+
+// Fetch notifications for current user
+async function loadNotifications() {
+    if (!authToken || !currentUser) return;
+    try {
+        const res = await fetch(`${API_BASE}/notifications`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            notifications = data.notifications || [];
+            renderNotifications();
+        } else {
+            notifications = [];
+            renderNotifications();
+        }
+    } catch (err) {
+        notifications = [];
+        renderNotifications();
+    }
+}
+
+// Render notifications in dashboard
+function renderNotifications() {
+    const notifEl = document.getElementById('notifications-panel');
+    if (!notifEl) return;
+    if (!notifications.length) {
+        notifEl.innerHTML = '<p class="empty-state">No notifications.</p>';
+        return;
+    }
+    notifEl.innerHTML = notifications.map(n => `
+        <div class="notification-card${n.read ? ' read' : ''}">
+            <div class="notif-type">${n.type.replace(/_/g, ' ')}</div>
+            <div class="notif-msg">${n.message}</div>
+            <div class="notif-date">${new Date(n.createdAt).toLocaleString()}</div>
+        </div>
+    `).join('');
 }
 
 function renderActionButtons() {

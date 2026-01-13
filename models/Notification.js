@@ -6,9 +6,10 @@ const mongoose = require('mongoose');
  * Tracks notifications for users (primarily lenders) about order funding requests.
  * 
  * Notification Types:
- * - FUNDING_REQUEST: Supplier requests funding from lender
- * - ORDER_APPROVED: Order approved by admin (future)
- * - MILESTONE_COMPLETED: Milestone completed (future)
+ * - NEW_ORDER_REQUEST: Supplier creates new order (notify lender)
+ * - MILESTONE_APPROVED: Lender/admin approves milestone (notify supplier)
+ * - NEXT_MILESTONE_UNLOCKED: Next milestone available (notify supplier)
+ * - PROOF_SUBMITTED: Supplier submits proof (notify lender/admin)
  */
 const notificationSchema = new mongoose.Schema(
   {
@@ -21,13 +22,23 @@ const notificationSchema = new mongoose.Schema(
     order_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Order',
-      required: [true, 'Order ID is required'],
+      required: false,
+      index: true
+    },
+    milestone_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Milestone',
+      required: false,
       index: true
     },
     type: {
       type: String,
-      enum: ['FUNDING_REQUEST', 'ORDER_APPROVED', 'MILESTONE_COMPLETED'],
-      default: 'FUNDING_REQUEST',
+      enum: [
+        'NEW_ORDER_REQUEST',
+        'MILESTONE_APPROVED',
+        'NEXT_MILESTONE_UNLOCKED',
+        'PROOF_SUBMITTED'
+      ],
       required: true
     },
     message: {

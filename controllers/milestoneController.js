@@ -194,28 +194,28 @@ exports.uploadProof = async (req, res) => {
     milestone.proof_verified_by = null;
     await milestone.save();
 
-    // Create notifications for ADMIN and LENDER
+    // Create notifications for ADMIN and LENDER (type: PROOF_SUBMITTED)
     const order = milestone.order_id;
-    
     // Notify all ADMIN users
     const adminUsers = await User.find({ role: ROLES.ADMIN }).select('_id');
     for (const admin of adminUsers) {
       await Notification.create({
         user_id: admin._id,
         order_id: order._id,
-        type: 'MILESTONE_COMPLETED',
-        message: `Proof uploaded for milestone "${milestone.name}" in order ${order.order_id}. Awaiting verification.`,
+        milestone_id: milestone._id,
+        type: 'PROOF_SUBMITTED',
+        message: `Proof submitted for milestone "${milestone.name}" in order ${order.order_id}. Awaiting verification.`,
         read: false
       });
     }
-
     // Notify LENDER if exists
     if (order.lender_id) {
       await Notification.create({
         user_id: order.lender_id,
         order_id: order._id,
-        type: 'MILESTONE_COMPLETED',
-        message: `Proof uploaded for milestone "${milestone.name}" in order ${order.order_id}. Awaiting admin verification.`,
+        milestone_id: milestone._id,
+        type: 'PROOF_SUBMITTED',
+        message: `Proof submitted for milestone "${milestone.name}" in order ${order.order_id}. Awaiting admin verification.`,
         read: false
       });
     }
@@ -321,11 +321,12 @@ exports.verifyProof = async (req, res) => {
 
     await milestone.save();
 
-    // Create notification for supplier
+    // Create notification for supplier (type: MILESTONE_APPROVED or rejection)
     await Notification.create({
       user_id: milestone.order_id.created_by,
       order_id: milestone.order_id._id,
-      type: 'MILESTONE_COMPLETED',
+      milestone_id: milestone._id,
+      type: verified ? 'MILESTONE_APPROVED' : 'MILESTONE_APPROVED',
       message: verified 
         ? `Proof verified for milestone "${milestone.name}" in order ${milestone.order_id.order_id}. You can now complete this milestone.`
         : `Proof rejected for milestone "${milestone.name}" in order ${milestone.order_id.order_id}. ${rejection_reason || 'Please upload a new proof.'}`,
@@ -485,6 +486,16 @@ exports.completeMilestone = async (req, res) => {
       // Unlock the next milestone by changing status from LOCKED to PENDING
       nextMilestone.status = MILESTONE_STATUS.PENDING;
       await nextMilestone.save();
+      // Notify supplier: next milestone unlocked
+      const order = await Order.findById(milestone.order_id._id);
+      await Notification.create({
+        user_id: order.created_by,
+        order_id: order._id,
+        milestone_id: nextMilestone._id,
+        type: 'NEXT_MILESTONE_UNLOCKED',
+        message: `Next milestone "${nextMilestone.name}" unlocked for order ${order.order_id}.`,
+        read: false
+      });
     } else {
       // Phase 7: All milestones completed - mark order as COMPLETED
       // This indicates that all deliverables have been fulfilled
