@@ -141,12 +141,12 @@ function logout() {
 
 // Dashboard Display
 function showDashboard() {
-        startNotificationPolling();
-        stopNotificationPolling();
+    startNotificationPolling();
+    stopNotificationPolling();
     document.getElementById('login-section').style.display = 'none';
     document.getElementById('dashboard-section').style.display = 'block';
     document.getElementById('user-role').textContent = `Role: ${currentUser.role}`;
-    
+
     renderActionButtons();
     loadOrders();
     loadNotifications();
@@ -230,12 +230,39 @@ async function loadOrders() {
             const data = await response.json();
             currentOrders = data.orders || [];
             renderOrders();
+            renderAnalyticsDashboard();
         } else {
             console.error('Failed to load orders');
         }
     } catch (error) {
         console.error('Error loading orders:', error);
     }
+}
+// Analytics Dashboard Rendering
+function renderAnalyticsDashboard() {
+    // Total Orders
+    const totalOrders = currentOrders.length;
+
+    // Active Milestones (sum of milestones with status 'PENDING' or 'ACTIVE')
+    let activeMilestones = 0;
+    let completedMilestones = 0;
+    let loanOutstanding = 0;
+
+    currentOrders.forEach(order => {
+        if (order.milestones && Array.isArray(order.milestones)) {
+            activeMilestones += order.milestones.filter(m => m.status === 'PENDING' || m.status === 'ACTIVE').length;
+            completedMilestones += order.milestones.filter(m => m.status === 'COMPLETED').length;
+        }
+        // Loan Outstanding: sum value of orders not closed
+        if (order.status !== 'CLOSED') {
+            loanOutstanding += order.value;
+        }
+    });
+
+    document.getElementById('analytics-total-orders').textContent = totalOrders;
+    document.getElementById('analytics-active-milestones').textContent = activeMilestones;
+    document.getElementById('analytics-completed-milestones').textContent = completedMilestones;
+    document.getElementById('analytics-loan-outstanding').textContent = `$${loanOutstanding.toLocaleString()}`;
 }
 
 function renderOrders() {
@@ -273,12 +300,12 @@ function renderOrderActions(order) {
     
     // ADMIN: Can approve PENDING_VERIFICATION orders
     if (currentUser.role === 'ADMIN' && order.status === 'PENDING_VERIFICATION') {
-        actions += `<button onclick="approveOrder('${order.id}')">✓ Approve Order</button>`;
+        actions += `<button onclick="approveOrder('${order.id}')">Approve Order</button>`;
     }
     
     // ADMIN: Can repay COMPLETED orders
     if (currentUser.role === 'ADMIN' && order.status === 'COMPLETED') {
-        actions += `<button onclick="repayOrder('${order.id}')" class="btn-success">💰 Repay & Close</button>`;
+        actions += `<button onclick="repayOrder('${order.id}')" class="btn-success">Repay & Close</button>`;
     }
     
     // Status messages
@@ -603,6 +630,11 @@ function closeModal(modalId) {
     // Clear any error messages
     const errorElements = document.querySelectorAll(`#${modalId} .error`);
     errorElements.forEach(el => el.textContent = '');
+}
+
+function openNotificationsModal() {
+    loadNotifications();
+    document.getElementById('notifications-modal').style.display = 'flex';
 }
 
 // Close modal when clicking outside

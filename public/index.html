@@ -1,14 +1,12 @@
-            <!-- Notifications Panel -->
-            <div class="panel">
-                <h2>Notifications</h2>
-                <div id="notifications-panel"></div>
-            </div>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Supply Chain Financing - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -50,6 +48,26 @@
         </div>
 
         <div class="container">
+            <!-- Analytics Panel -->
+            <div id="analytics-panel" class="panel" style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 32px;">
+                <div class="dashboard-card" style="flex:1; min-width:220px;">
+                    <h3>Total Orders</h3>
+                    <div class="dashboard-value" id="analytics-total-orders">--</div>
+                </div>
+                <div class="dashboard-card" style="flex:1; min-width:220px;">
+                    <h3>Active Milestones</h3>
+                    <div class="dashboard-value" id="analytics-active-milestones">--</div>
+                </div>
+                <div class="dashboard-card" style="flex:1; min-width:220px;">
+                    <h3>Loan Outstanding ($)</h3>
+                    <div class="dashboard-value" id="analytics-loan-outstanding">--</div>
+                </div>
+                <div class="dashboard-card" style="flex:1; min-width:220px;">
+                    <h3>Completed Milestones</h3>
+                    <div class="dashboard-value" id="analytics-completed-milestones">--</div>
+                </div>
+            </div>
+
             <!-- Action Panel -->
             <div id="action-panel" class="panel">
                 <h2>Actions</h2>
@@ -58,12 +76,41 @@
 
             <!-- Orders Panel -->
             <div class="panel">
-                <h2>Orders</h2>
-                <button onclick="refreshOrders()">🔄 Refresh</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">Orders</h2>
+                    <div>
+                        <button onclick="openNotificationsModal()" class="btn-secondary">View Notifications</button>
+                        <button onclick="refreshOrders()" class="btn-secondary" style="margin-left: 8px;">Refresh</button>
+                    </div>
+                </div>
                 <div id="orders-container"></div>
             </div>
 
             <!-- Create Order Modal (SUPPLIER only) -->
+                <style>
+                    .dashboard-card {
+                        background: #20232E;
+                        border-radius: 12px;
+                        box-shadow: 0 2px 8px rgba(58,141,255,0.08);
+                        padding: 24px 18px;
+                        margin-bottom: 0;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: flex-start;
+                    }
+                    .dashboard-card h3 {
+                        color: #8fa1c7;
+                        font-size: 16px;
+                        font-weight: 500;
+                        margin-bottom: 10px;
+                    }
+                    .dashboard-value {
+                        font-size: 32px;
+                        font-weight: 700;
+                        color: #3A8DFF;
+                        margin-bottom: 4px;
+                    }
+                </style>
             <div id="create-order-modal" class="modal" style="display: none;">
                 <div class="modal-content">
                     <h2>Create New Order</h2>
@@ -127,8 +174,53 @@
                     <button onclick="closeModal('order-details-modal')">Close</button>
                 </div>
             </div>
+
+            <!-- Notifications Modal -->
+            <div id="notifications-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h2>Notifications</h2>
+                    <div id="notifications-panel" style="max-height: 400px; overflow-y: auto;"></div>
+                    <button onclick="closeModal('notifications-modal')" style="margin-top: 20px;">Close</button>
+                </div>
+            </div>
         </div>
     </div>
+
+    <style>
+        .dashboard-card {
+            background: #1a1a1a;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 138, 51, 0.15);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            padding: 26px 20px;
+            margin-bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            transition: all 0.3s ease;
+        }
+        .dashboard-card:hover {
+            border-color: rgba(255, 138, 51, 0.3);
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.5);
+            transform: translateY(-3px);
+        }
+        .dashboard-card h3 {
+            color: #b8b8b8;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .dashboard-value {
+            font-size: 34px;
+            font-weight: 700;
+            color: #ff8a33;
+            margin-bottom: 4px;
+            letter-spacing: -0.02em;
+            text-shadow: 0 0 20px rgba(255, 138, 51, 0.15);
+        }
+    </style>
 
     <script src="app.js"></script>
 </body>

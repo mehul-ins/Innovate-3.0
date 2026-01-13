@@ -1,43 +1,70 @@
-<div class="panel">
-  <h2>Create New Order</h2>
-  <form id="supplier-order-form">
-    <div class="form-group">
-      <label>Order ID:</label>
-      <input type="text" id="order-id" required />
+<div class="panel glass" style="max-width: 600px; margin: 0 auto;">
+  <h2 style="font-size:1.5rem; font-weight:700; margin-bottom:16px;">Create New Order</h2>
+  <form id="supplier-order-form" autocomplete="off">
+    <div class="form-stepper">
+      <div class="step active">1</div>
+      <div class="step">2</div>
+      <div class="step">3</div>
     </div>
-    <div class="form-group">
-      <label>Buyer Name:</label>
-      <input type="text" id="buyer-name" required />
+    <div class="form-section">
+      <div class="form-group floating-label">
+        <input type="text" id="buyer-name" required />
+        <label for="buyer-name">Buyer Name</label>
+        <span class="input-status" id="buyer-name-status"></span>
+      </div>
+      <div class="form-group floating-label">
+        <input type="number" id="order-value" min="1" required />
+        <label for="order-value">Order Value <span class="currency">₹</span></label>
+        <span class="input-status" id="order-value-status"></span>
+      </div>
+      <div class="form-group floating-label">
+        <input type="date" id="delivery-date" required />
+        <label for="delivery-date">Delivery Date</label>
+        <span class="input-status" id="delivery-date-status"></span>
+      </div>
+      <div class="form-group floating-label">
+        <select id="lender-id" required>
+          <option value="">Select Lender</option>
+        </select>
+        <label for="lender-id">Lender</label>
+        <span class="input-status" id="lender-id-status"></span>
+      </div>
+      <div class="form-group">
+        <label>Milestone Breakdown</label>
+        <div id="milestone-list"></div>
+        <button type="button" id="add-milestone-row-btn">+ Add Milestone</button>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">
+          Total percentage: <span id="total-percentage">0</span>%
+        </p>
+      </div>
     </div>
-    <div class="form-group">
-      <label>Total Order Value ($):</label>
-      <input type="number" id="order-value" min="1" required />
+    <div class="form-section">
+      <label style="font-weight:600; margin-bottom:8px; display:block;">Upload Documents</label>
+      <div class="upload-zone" id="order-upload-zone">
+        <span class="upload-icon">📎</span>
+        <span class="upload-text">Drag & Drop files here or click to browse</span>
+        <input type="file" id="order-upload-input" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+        <div class="upload-preview" id="order-upload-preview"></div>
+      </div>
+      <div class="upload-progress" id="order-upload-progress"></div>
     </div>
-    <div class="form-group">
-      <label>Delivery Date:</label>
-      <input type="date" id="delivery-date" required />
+    <div class="form-actions" style="margin-top:24px; display:flex; gap:16px; justify-content:flex-end;">
+      <button type="button" class="btn-secondary" id="cancel-order-btn">Cancel</button>
+      <button type="submit" class="btn-success" id="submit-order-btn">Submit Order →</button>
     </div>
-
-    <div class="form-group">
-      <label>Select Lender:</label>
-      <select id="lender-id" required>
-        <option value="">Loading lenders...</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label>Milestone Breakdown:</label>
-      <div id="milestone-list"></div>
-      <button type="button" id="add-milestone-row-btn">+ Add Milestone</button>
-      <p style="margin-top: 0.5rem; font-size: 0.9rem;">
-        Total percentage: <span id="total-percentage">0</span>%
-      </p>
-    </div>
-
-    <button type="submit">Submit Order</button>
+    <div class="draft-indicator" id="order-draft-indicator">Draft saved <span id="order-draft-timestamp"></span></div>
     <div id="supplier-order-error" class="error" style="margin-top: 0.5rem;"></div>
     <div id="supplier-order-success" class="success" style="margin-top: 0.5rem;"></div>
   </form>
+  <div id="order-confirmation-modal" class="modal" style="display:none;">
+    <div class="modal-content" style="text-align:center;">
+      <div class="success-animation">✔️</div>
+      <h2>Order Submitted!</h2>
+      <p>Your order has been created successfully.</p>
+      <button class="btn" onclick="closeOrderConfirmation()">Go to Dashboard</button>
+    </div>
+  </div>
+</div>
 </div>
 
 <script>
