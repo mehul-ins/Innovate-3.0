@@ -13,14 +13,15 @@ let selectedMilestone = null;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
-        // Start notification polling if dashboard is shown
-        if (savedToken && savedUser && document.getElementById('dashboard-section')) {
-            startNotificationPolling();
-        }
     // Check if user is already logged in (SPA dashboard only)
     const savedToken = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('currentUser');
-    
+
+    // Start notification polling if dashboard is shown
+    if (savedToken && savedUser && document.getElementById('dashboard-section')) {
+        startNotificationPolling();
+    }
+
     if (savedToken && savedUser && document.getElementById('dashboard-section')) {
         authToken = savedToken;
         currentUser = JSON.parse(savedUser);

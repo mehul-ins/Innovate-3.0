@@ -474,16 +474,19 @@ exports.completeMilestone = async (req, res) => {
       status: 'RECORDED'
     });
 
-    // Find and unlock next milestone (if exists)
+    // Enforce only one PENDING milestone at a time
+    // Find next milestone by order sequence
     const nextMilestone = await Milestone.findOne({
       order_id: milestone.order_id._id,
       order: milestone.order + 1
     });
 
     let orderCompletionMessage = '';
+    let loanRepaid = false;
 
     if (nextMilestone) {
-      // Unlock the next milestone by changing status from LOCKED to PENDING
+      // Only unlock if all previous are COMPLETED (should always be true here)
+      // Set next milestone to PENDING, all others remain LOCKED/COMPLETED
       nextMilestone.status = MILESTONE_STATUS.PENDING;
       await nextMilestone.save();
       // Notify supplier: next milestone unlocked
@@ -497,20 +500,32 @@ exports.completeMilestone = async (req, res) => {
         read: false
       });
     } else {
-      // Phase 7: All milestones completed - mark order as COMPLETED
-      // This indicates that all deliverables have been fulfilled
-      // Order is now ready for loan repayment and final closure
+      // No more milestones: mark order as COMPLETED and REPAID, then close
       const order = await Order.findById(milestone.order_id._id);
-      if (order && order.status === ORDER_STATUS.APPROVED) {
+      if (order && (order.status === ORDER_STATUS.APPROVED || order.status === ORDER_STATUS.LENDER_APPROVED)) {
         order.status = ORDER_STATUS.COMPLETED;
         await order.save();
-        orderCompletionMessage = 'All milestones completed. Order marked as COMPLETED. Ready for repayment and closure.';
+        // Mock loan repayment transaction
+        await Transaction.create({
+          order_id: order._id,
+          type: TRANSACTION_TYPE.RELEASE,
+          amount: order.value,
+          description: 'Loan repaid in full. Order closed.',
+          status: 'RECORDED'
+        });
+        // Mark order as CLOSED
+        order.status = ORDER_STATUS.CLOSED;
+        await order.save();
+        orderCompletionMessage = 'All milestones completed. Order marked as COMPLETED and loan REPAID. Order is now CLOSED.';
+        loanRepaid = true;
       }
     }
 
     res.status(200).json({
       success: true,
-      message: 'Milestone completed successfully. Funds released from escrow.',
+      message: loanRepaid
+        ? 'Final milestone completed. Order is now CLOSED and loan is REPAID.'
+        : 'Milestone completed successfully. Funds released from escrow.',
       milestone: {
         id: milestone._id,
         name: milestone.name,
@@ -524,14 +539,14 @@ exports.completeMilestone = async (req, res) => {
         id: nextMilestone._id,
         name: nextMilestone.name,
         status: nextMilestone.status,
-        message: `${nextMilestone.name} milestone is now PENDING and ready for completion`
+        message: (nextMilestone.name + ' milestone is now PENDING and ready for completion')
       } : {
         message: orderCompletionMessage || 'All milestones completed. Order fulfillment complete.'
       },
       transaction: {
         type: TRANSACTION_TYPE.RELEASE,
         amount: milestone.amount,
-        description: `Funds released for milestone: ${milestone.name}`
+        description: 'Funds released for milestone: ' + milestone.name
       }
     });
   } catch (error) {

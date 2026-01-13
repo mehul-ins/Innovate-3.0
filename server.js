@@ -1,3 +1,5 @@
+// Notifications API Route
+app.use('/api/notifications', require('./routes/notification'));
 // Start notification cron job
 require('./cron/notificationCron');
 require('dotenv').config();
