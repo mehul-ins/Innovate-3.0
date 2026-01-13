@@ -51,6 +51,13 @@ const orderSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
+    // Reference to the lender selected for funding
+    lender_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Lender selection is required'],
+      index: true
+    },
     // Supplier-defined milestone breakdown (dynamic milestones)
     // Structure: [{ name: string, percentage: number }, ...]
     // Percentages are validated against platform rules
@@ -78,6 +85,7 @@ const orderSchema = new mongoose.Schema(
 // Index for faster queries
 orderSchema.index({ status: 1 });
 orderSchema.index({ created_by: 1 });
+orderSchema.index({ lender_id: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 

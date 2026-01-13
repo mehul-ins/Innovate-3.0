@@ -19,6 +19,13 @@
     </div>
 
     <div class="form-group">
+      <label>Select Lender:</label>
+      <select id="lender-id" required>
+        <option value="">Loading lenders...</option>
+      </select>
+    </div>
+
+    <div class="form-group">
       <label>Milestone Breakdown:</label>
       <div id="milestone-list"></div>
       <button type="button" id="add-milestone-row-btn">+ Add Milestone</button>
@@ -87,6 +94,41 @@
       totalEl.textContent = total.toFixed(2);
     }
 
+    async function loadLenders() {
+      const lenderSelect = document.getElementById('lender-id');
+      if (!lenderSelect) return;
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        lenderSelect.innerHTML = '<option value="">Please login first</option>';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/lenders`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.lenders) {
+          lenderSelect.innerHTML = '<option value="">Select a lender</option>';
+          data.lenders.forEach(lender => {
+            const option = document.createElement('option');
+            option.value = lender.id;
+            option.textContent = `${lender.name} (${lender.email})`;
+            lenderSelect.appendChild(option);
+          });
+        } else {
+          lenderSelect.innerHTML = '<option value="">Error loading lenders</option>';
+        }
+      } catch (err) {
+        console.error('Error loading lenders:', err);
+        lenderSelect.innerHTML = '<option value="">Error loading lenders</option>';
+      }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
       const form = document.getElementById('supplier-order-form');
       if (!form) return; // Only run on supplier dashboard
@@ -94,6 +136,9 @@
       const errorEl = document.getElementById('supplier-order-error');
       const successEl = document.getElementById('supplier-order-success');
       const addRowBtn = document.getElementById('add-milestone-row-btn');
+
+      // Load lenders on page load
+      loadLenders();
 
       const milestoneState = [{ name: '', percentage: '' }];
       renderMilestoneRows(milestoneState);
@@ -112,6 +157,12 @@
         const buyer_name = document.getElementById('buyer-name').value.trim();
         const value = parseFloat(document.getElementById('order-value').value);
         const delivery_date = document.getElementById('delivery-date').value;
+        const lender_id = document.getElementById('lender-id').value;
+
+        if (!lender_id) {
+          errorEl.textContent = 'Please select a lender.';
+          return;
+        }
 
         const milestones = milestoneState
           .map(m => ({
@@ -155,6 +206,7 @@
               buyer_name,
               value,
               delivery_date,
+              lender_id,
               milestones
             })
           });

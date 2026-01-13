@@ -29,6 +29,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/order'));
 app.use('/api/milestones', require('./routes/milestone'));
 app.use('/api/transactions', require('./routes/transaction'));
+app.use('/api/lenders', require('./routes/lender'));
 
 // Server-rendered views
 app.get('/', (req, res) => {

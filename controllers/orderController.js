@@ -1,7 +1,9 @@
 const Order = require('../models/Order');
 const Milestone = require('../models/Milestone');
 const Transaction = require('../models/Transaction');
-const { MILESTONE_STATUS, MILESTONE_TYPES, ORDER_STATUS, TRANSACTION_TYPE } = require('../config/constants');
+const User = require('../models/User');
+const Notification = require('../models/Notification');
+const { MILESTONE_STATUS, MILESTONE_TYPES, ORDER_STATUS, TRANSACTION_TYPE, ROLES } = require('../config/constants');
 
 /**
  * Order Controller
@@ -19,13 +21,28 @@ const { MILESTONE_STATUS, MILESTONE_TYPES, ORDER_STATUS, TRANSACTION_TYPE } = re
 // @access  Private (SUPPLIER only)
 exports.createOrder = async (req, res) => {
   try {
-    const { order_id, buyer_name, value, delivery_date, milestones } = req.body;
+    const { order_id, buyer_name, value, delivery_date, milestones, lender_id } = req.body;
 
     // Validate required fields
-    if (!order_id || !buyer_name || !value || !delivery_date) {
+    if (!order_id || !buyer_name || !value || !delivery_date || !lender_id) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields: order_id, buyer_name, value, delivery_date'
+        message: 'Please provide all required fields: order_id, buyer_name, value, delivery_date, lender_id'
+      });
+    }
+
+    // Validate lender exists and is a LENDER role
+    const lender = await User.findById(lender_id);
+    if (!lender) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected lender does not exist'
+      });
+    }
+    if (lender.role !== ROLES.LENDER) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected user is not a lender'
       });
     }
 
@@ -91,8 +108,18 @@ exports.createOrder = async (req, res) => {
       delivery_date: deliveryDate,
       milestones: processedMilestones,
       created_by: req.user.id, // Set from authenticated user
+      lender_id: lender_id,
       status: ORDER_STATUS.PENDING_VERIFICATION,
       funds_locked: false
+    });
+
+    // Create notification for the lender
+    await Notification.create({
+      user_id: lender_id,
+      order_id: order._id,
+      type: 'FUNDING_REQUEST',
+      message: `New funding request from ${req.user.name} for order ${order_id} ($${numericValue.toLocaleString()})`,
+      read: false
     });
 
     res.status(201).json({
@@ -112,6 +139,7 @@ exports.createOrder = async (req, res) => {
         })),
         total_milestone_percentage: milestonesValidation.totalPercentage,
         created_by: order.created_by,
+        lender_id: order.lender_id,
         createdAt: order.createdAt
       }
     });

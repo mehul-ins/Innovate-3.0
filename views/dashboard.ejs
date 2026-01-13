@@ -1,14 +1,14 @@
 <section id="dashboard-section">
   <% if (role === 'SUPPLIER') { %>
     <%- include('partials/supplierOrderForm') %>
+  <% } else if (role === 'LENDER') { %>
+    <%- include('partials/lenderDashboard') %>
   <% } else { %>
     <div class="panel">
       <h2>Actions</h2>
       <div>
         <% if (role === 'ADMIN') { %>
           <p>You can approve orders, verify proofs, and release funds.</p>
-        <% } else if (role === 'LENDER') { %>
-          <p>You can approve funding and review milestone budgets.</p>
         <% } else { %>
           <p>Dashboard role not specified.</p>
         <% } %>

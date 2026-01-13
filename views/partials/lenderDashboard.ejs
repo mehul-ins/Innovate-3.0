@@ -1,0 +1,84 @@
+<div class="panel">
+  <h2>Pending Funding Requests</h2>
+  <div id="lender-pending-requests">
+    <p>Loading pending requests...</p>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const API_BASE = '/api';
+
+    function renderPendingRequests(orders, notifications) {
+      const container = document.getElementById('lender-pending-requests');
+      if (!container) return;
+
+      if (orders.length === 0) {
+        container.innerHTML = '<p class="empty-state">No pending funding requests.</p>';
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="margin-bottom: 1rem;">
+          <p><strong>You have ${orders.length} pending funding request${orders.length !== 1 ? 's' : ''}</strong></p>
+        </div>
+        ${orders.map(order => `
+          <div class="order-card" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+              <h3 style="margin: 0;">Order: ${order.order_id}</h3>
+              <span class="status-badge status-${order.status.toLowerCase()}" style="padding: 0.25rem 0.5rem; background: #f0f0f0; border-radius: 3px;">${order.status}</span>
+            </div>
+            <div style="margin-bottom: 0.5rem;">
+              <p><strong>Buyer:</strong> ${order.buyer_name}</p>
+              <p><strong>Order Value:</strong> $${order.value.toLocaleString()}</p>
+              <p><strong>Delivery Date:</strong> ${new Date(order.delivery_date).toLocaleDateString()}</p>
+              <p><strong>Supplier:</strong> ${order.supplier?.name || 'N/A'} (${order.supplier?.email || 'N/A'})</p>
+            </div>
+            <div style="margin-top: 0.75rem;">
+              <p><strong>Milestone Breakdown:</strong></p>
+              <ul style="margin-left: 1.5rem; margin-top: 0.25rem;">
+                ${order.milestones.map(m => `<li>${m.name}: ${m.percentage}%</li>`).join('')}
+              </ul>
+            </div>
+            <div style="margin-top: 0.75rem; font-size: 0.85rem; color: #666;">
+              <p>Requested on: ${new Date(order.createdAt).toLocaleString()}</p>
+            </div>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    async function loadPendingRequests() {
+      const container = document.getElementById('lender-pending-requests');
+      if (!container) return;
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        container.innerHTML = '<p class="error">Please login as a lender to view pending requests.</p>';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/lenders/pending-requests`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          renderPendingRequests(data.orders || [], data.notifications || []);
+        } else {
+          container.innerHTML = `<p class="error">Error loading requests: ${data.message || 'Unknown error'}</p>`;
+        }
+      } catch (err) {
+        console.error('Error loading pending requests:', err);
+        container.innerHTML = '<p class="error">Error connecting to server.</p>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      loadPendingRequests();
+    });
+  })();
+</script>

@@ -42,6 +42,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Helper to load lenders into the SPA create-order modal
+async function loadLendersForModal() {
+    const select = document.getElementById('modal-lender-id');
+    if (!select) return;
+
+    if (!authToken) {
+        select.innerHTML = '<option value=\"\">Please login first</option>';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/lenders`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        const data = await res.json();
+        if (res.ok && data.lenders) {
+            select.innerHTML = '<option value=\"\">Select a lender</option>';
+            data.lenders.forEach((lender) => {
+                const opt = document.createElement('option');
+                opt.value = lender.id;
+                opt.textContent = `${lender.name} (${lender.email})`;
+                select.appendChild(opt);
+            });
+        } else {
+            select.innerHTML = '<option value=\"\">Error loading lenders</option>';
+        }
+    } catch (err) {
+        console.error('Error loading lenders for modal:', err);
+        select.innerHTML = '<option value=\"\">Error loading lenders</option>';
+    }
+}
+
 // Authentication
 async function handleLogin(e) {
     e.preventDefault();
@@ -257,13 +291,17 @@ function openCreateOrderModal() {
     // Set min date to today
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('delivery-date').setAttribute('min', today);
+    // Load lenders into the dropdown if present
+    if (typeof loadLendersForModal === 'function') {
+        loadLendersForModal();
+    }
     renderMilestoneRows();
 }
 
 async function handleCreateOrder(e) {
     e.preventDefault();
     
-    // Collect milestone data
+    // Collect milestone data (convert amounts to percentages expected by backend)
     const milestoneRows = document.querySelectorAll('.milestone-row');
     const milestones = [];
     milestoneRows.forEach(row => {
@@ -274,8 +312,13 @@ async function handleCreateOrder(e) {
         }
     });
 
-    // Basic client-side validation: ensure milestone amounts sum to order value
     const orderValue = parseFloat(document.getElementById('order-value').value);
+    if (isNaN(orderValue) || orderValue <= 0) {
+        createOrderErrorEl.textContent = 'Order value must be a positive number.';
+        return;
+    }
+
+    // Basic client-side validation: ensure milestone amounts sum to order value
     const totalMilestoneAmount = milestones.reduce((sum, m) => sum + m.amount, 0);
     const createOrderErrorEl = document.getElementById('create-order-error');
 
@@ -286,12 +329,26 @@ async function handleCreateOrder(e) {
         createOrderErrorEl.textContent = '';
     }
 
+    // Lender selection validation
+    const lenderSelect = document.getElementById('modal-lender-id');
+    if (!lenderSelect || !lenderSelect.value) {
+        createOrderErrorEl.textContent = 'Please select a lender.';
+        return;
+    }
+
+    // Convert to percentages for backend
+    const milestonesWithPct = milestones.map(m => ({
+        name: m.name,
+        percentage: Number(((m.amount / orderValue) * 100).toFixed(2))
+    }));
+
     const orderData = {
         order_id: document.getElementById('order-id').value,
         buyer_name: document.getElementById('buyer-name').value,
-        value: parseFloat(document.getElementById('order-value').value),
+        value: orderValue,
         delivery_date: document.getElementById('delivery-date').value,
-        milestones
+        lender_id: lenderSelect.value,
+        milestones: milestonesWithPct
     };
     
     try {
@@ -341,6 +398,14 @@ function renderMilestoneRows() {
             window.milestoneRowsState.splice(idx, 1);
             renderMilestoneRows();
         };
+        // Keep state in sync with user input to avoid clearing values when adding rows
+        row.querySelector('.milestone-name').addEventListener('input', function () {
+            window.milestoneRowsState[idx].name = this.value;
+        });
+        row.querySelector('.milestone-amount').addEventListener('input', function () {
+            const val = parseFloat(this.value);
+            window.milestoneRowsState[idx].amount = isNaN(val) ? '' : val;
+        });
         milestoneList.appendChild(row);
     });
 }
