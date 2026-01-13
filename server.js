@@ -19,6 +19,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/order'));
 app.use('/api/milestones', require('./routes/milestone'));
+app.use('/api/transactions', require('./routes/transaction'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -28,7 +29,8 @@ app.get('/', (req, res) => {
     endpoints: {
       auth: '/api/auth',
       orders: '/api/orders',
-      milestones: '/api/milestones'
+      milestones: '/api/milestones',
+      transactions: '/api/transactions'
     }
   });
 });

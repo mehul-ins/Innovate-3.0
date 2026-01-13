@@ -61,9 +61,35 @@ const MILESTONE_TYPES = [
   }
 ];
 
+/**
+ * Transaction Types
+ * 
+ * Mock Escrow Ledger Tracking:
+ * Every fund movement is recorded as a transaction for audit trail.
+ * 
+ * LOCK: Funds placed in escrow (held, not released)
+ *   - Created when order is approved
+ *   - Amount: Full order value
+ *   - Purpose: Reserve funds with lender/bank
+ *   - Effect: Funds available but not released until milestone completion
+ * 
+ * RELEASE: Funds released from escrow to supplier
+ *   - Created when milestone is completed
+ *   - Amount: Milestone amount
+ *   - Purpose: Pay supplier for completed work
+ *   - Effect: Funds transferred from escrow to supplier account
+ * 
+ * Ledger ensures full visibility into fund flow without real payments.
+ */
+const TRANSACTION_TYPE = {
+  LOCK: 'LOCK',
+  RELEASE: 'RELEASE'
+};
+
 module.exports = {
   ROLES,
   ORDER_STATUS,
   MILESTONE_STATUS,
-  MILESTONE_TYPES
+  MILESTONE_TYPES,
+  TRANSACTION_TYPE
 };

@@ -1,7 +1,7 @@
 const Order = require('../models/Order');
 const Milestone = require('../models/Milestone');
-const { MILESTONE_STATUS, MILESTONE_TYPES } = require('../config/constants');
-const { ORDER_STATUS } = require('../config/constants');
+const Transaction = require('../models/Transaction');
+const { MILESTONE_STATUS, MILESTONE_TYPES, ORDER_STATUS, TRANSACTION_TYPE } = require('../config/constants');
 
 /**
  * Order Controller
@@ -195,6 +195,18 @@ exports.approveOrder = async (req, res) => {
 
     // Insert all milestones
     await Milestone.insertMany(milestones);
+
+    // Create LOCK transaction in mock escrow ledger
+    // This records that the full order value is now reserved in escrow
+    // Mock Escrow: Funds are held by system, not released until milestones completed
+    await Transaction.create({
+      order_id: order._id,
+      milestone_id: null, // LOCK transactions don't associate with a specific milestone
+      type: TRANSACTION_TYPE.LOCK,
+      amount: order.value,
+      description: `Order ${order.order_id} approved. Funds locked in escrow. Total: $${order.value}`,
+      status: 'RECORDED'
+    });
 
     res.status(200).json({
       success: true,
