@@ -67,6 +67,12 @@ async function loadLendersForModal() {
                 'Authorization': `Bearer ${authToken}`
             }
         });
+        
+        if (res.status === 401) {
+            select.innerHTML = '<option value="">Please login first</option>';
+            return;
+        }
+        
         const data = await res.json();
         if (res.ok && data.lenders) {
             select.innerHTML = '<option value=\"\">Select a lender</option>';
@@ -193,11 +199,17 @@ async function loadNotifications() {
             const data = await res.json();
             notifications = data.notifications || [];
             renderNotifications();
+        } else if (res.status === 401) {
+            // User not authenticated, stop polling
+            stopNotificationPolling();
+            notifications = [];
+            renderNotifications();
         } else {
             notifications = [];
             renderNotifications();
         }
     } catch (err) {
+        // Silently fail if notifications endpoint is not available
         notifications = [];
         renderNotifications();
     }
@@ -241,10 +253,25 @@ function renderActionButtons() {
 
 // Orders Management
 async function loadOrders() {
+    if (!authToken || !currentUser) {
+        console.log('Please login to view orders');
+        return;
+    }
+
     try {
         const response = await fetch(`${API_BASE}/orders`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
+
+        if (response.status === 401) {
+            console.log('Authentication required. Please login.');
+            // Clear stale auth data
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentUser');
+            authToken = null;
+            currentUser = null;
+            return;
+        }
 
         if (response.ok) {
             const data = await response.json();
@@ -252,10 +279,10 @@ async function loadOrders() {
             renderOrders();
             renderAnalyticsDashboard();
         } else {
-            console.error('Failed to load orders');
+            console.log('Unable to load orders. Please try again.');
         }
     } catch (error) {
-        console.error('Error loading orders:', error);
+        console.log('Error loading orders. Please check your connection.');
     }
 }
 // Analytics Dashboard Rendering
