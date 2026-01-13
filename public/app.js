@@ -134,6 +134,7 @@ function logout() {
     
     document.getElementById('login-section').style.display = 'block';
     document.getElementById('dashboard-section').style.display = 'none';
+    document.getElementById('statistics-section').style.display = 'none';
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
     document.getElementById('login-error').textContent = '';
@@ -142,15 +143,34 @@ function logout() {
 // Dashboard Display
 function showDashboard() {
     startNotificationPolling();
-    stopNotificationPolling();
     document.getElementById('login-section').style.display = 'none';
     document.getElementById('dashboard-section').style.display = 'block';
+    document.getElementById('statistics-section').style.display = 'none';
     document.getElementById('user-role').textContent = `Role: ${currentUser.role}`;
+    
+    // Update nav active state
+    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+    document.querySelectorAll('#nav-dashboard').forEach(link => link.classList.add('active'));
 
     renderActionButtons();
     loadOrders();
     loadNotifications();
 }
+
+// Statistics Display
+function showStatistics() {
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('dashboard-section').style.display = 'none';
+    document.getElementById('statistics-section').style.display = 'block';
+    document.getElementById('user-role-stats').textContent = `Role: ${currentUser.role}`;
+    
+    // Update nav active state
+    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+    document.querySelectorAll('#nav-statistics').forEach(link => link.classList.add('active'));
+    
+    loadStatistics();
+}
+
 // Notification Polling
 function startNotificationPolling() {
     if (notificationInterval) clearInterval(notificationInterval);
@@ -277,7 +297,7 @@ function renderOrders() {
         <div class="order-card">
             <div class="order-header">
                 <h3>${order.order_id}</h3>
-                <span class="status-badge status-${order.status.toLowerCase()}">${order.status}</span>
+                <span class="status-badge status-${order.status.toLowerCase()}">${order.status.replace(/_/g, ' ')}</span>
             </div>
             <div class="order-body">
                 <p><strong>Buyer:</strong> ${order.buyer_name}</p>
@@ -546,7 +566,7 @@ function renderOrderDetailsModal(orderId, milestonesData, transactionsData) {
                 <div class="milestone-card">
                     <div class="milestone-header">
                         <strong>${m.name}</strong>
-                        <span class="status-badge status-${m.status.toLowerCase()}">${m.status}</span>
+                        <span class="status-badge status-${m.status.toLowerCase()}">${m.status.replace(/_/g, ' ')}</span>
                     </div>
                     <p>Amount: $${m.amount.toLocaleString()} (${m.percentage}%)</p>
                     <p>Released: $${m.released_amount.toLocaleString()}</p>
@@ -568,7 +588,7 @@ function renderOrderDetailsModal(orderId, milestonesData, transactionsData) {
             
             ${transactions.map(t => `
                 <div class="transaction-item">
-                    <span class="tx-type tx-${t.type.toLowerCase()}">${t.type}</span>
+                    <span class="tx-type tx-${t.type.toLowerCase()}">${t.type.replace(/_/g, ' ')}</span>
                     <span>$${t.amount.toLocaleString()}</span>
                     <span class="tx-date">${new Date(t.createdAt).toLocaleString()}</span>
                     <p class="tx-desc">${t.description}</p>
@@ -641,5 +661,188 @@ function openNotificationsModal() {
 window.onclick = function(event) {
     if (event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
+    }
+}
+
+// Statistics Functions
+async function loadStatistics() {
+    try {
+        // Load all orders and transactions
+        const ordersResponse = await fetch(`${API_BASE}/orders`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        if (!ordersResponse.ok) {
+            console.error('Failed to load statistics');
+            return;
+        }
+        
+        const ordersData = await ordersResponse.json();
+        const orders = ordersData.orders || [];
+        
+        // Calculate overall statistics
+        const stats = calculateStatistics(orders);
+        renderStatistics(stats);
+        
+        // Load role-specific stats
+        renderRoleSpecificStats(orders);
+    } catch (error) {
+        console.error('Error loading statistics:', error);
+    }
+}
+
+function calculateStatistics(orders) {
+    const stats = {
+        totalOrders: orders.length,
+        totalValue: 0,
+        statusBreakdown: {},
+        totalMilestones: 0,
+        completedMilestones: 0,
+        pendingMilestones: 0,
+        lockedMilestones: 0,
+        totalTransactions: 0,
+        fundsLocked: 0,
+        fundsReleased: 0,
+        escrowBalance: 0
+    };
+    
+    orders.forEach(order => {
+        stats.totalValue += order.value || 0;
+        
+        // Status breakdown
+        const status = order.status || 'UNKNOWN';
+        stats.statusBreakdown[status] = (stats.statusBreakdown[status] || 0) + 1;
+        
+        // Milestone stats
+        if (order.milestones && Array.isArray(order.milestones)) {
+            stats.totalMilestones += order.milestones.length;
+            order.milestones.forEach(m => {
+                if (m.status === 'COMPLETED') stats.completedMilestones++;
+                else if (m.status === 'PENDING') stats.pendingMilestones++;
+                else if (m.status === 'LOCKED') stats.lockedMilestones++;
+                
+                stats.fundsReleased += m.released_amount || 0;
+            });
+        }
+        
+        // Financial stats
+        if (order.funds_locked && order.status !== 'CLOSED') {
+            stats.fundsLocked += order.value || 0;
+        }
+    });
+    
+    stats.escrowBalance = stats.fundsLocked - stats.fundsReleased;
+    stats.avgOrderValue = stats.totalOrders > 0 ? stats.totalValue / stats.totalOrders : 0;
+    
+    return stats;
+}
+
+function renderStatistics(stats) {
+    // Overall stats
+    document.getElementById('stats-total-orders').textContent = stats.totalOrders;
+    document.getElementById('stats-orders-breakdown').textContent = 
+        `${Object.keys(stats.statusBreakdown).length} different statuses`;
+    
+    document.getElementById('stats-total-value').textContent = 
+        `$${stats.totalValue.toLocaleString()}`;
+    document.getElementById('stats-value-breakdown').textContent = 
+        `Avg: $${Math.round(stats.avgOrderValue).toLocaleString()} per order`;
+    
+    document.getElementById('stats-total-milestones').textContent = stats.totalMilestones;
+    document.getElementById('stats-milestone-breakdown').textContent = 
+        `Complete: ${stats.completedMilestones} | Pending: ${stats.pendingMilestones} | Locked: ${stats.lockedMilestones}`;
+    
+    document.getElementById('stats-total-transactions').textContent = 
+        stats.totalMilestones + stats.totalOrders;
+    document.getElementById('stats-transaction-breakdown').textContent = 
+        `${stats.totalOrders} locks + ${stats.completedMilestones} releases`;
+    
+    // Financial overview
+    document.getElementById('stats-funds-locked').textContent = 
+        `$${stats.fundsLocked.toLocaleString()}`;
+    document.getElementById('stats-funds-released').textContent = 
+        `$${stats.fundsReleased.toLocaleString()}`;
+    document.getElementById('stats-escrow-balance').textContent = 
+        `$${stats.escrowBalance.toLocaleString()}`;
+    document.getElementById('stats-avg-order').textContent = 
+        `$${Math.round(stats.avgOrderValue).toLocaleString()}`;
+    
+    // Status breakdown chart
+    renderStatusChart(stats.statusBreakdown);
+}
+
+function renderStatusChart(breakdown) {
+    const container = document.getElementById('stats-status-chart');
+    container.innerHTML = Object.entries(breakdown)
+        .sort((a, b) => b[1] - a[1])
+        .map(([status, count]) => `
+            <div class="status-item">
+                <span class="status-item-label">${status.replace(/_/g, ' ')}</span>
+                <span class="status-item-value">${count}</span>
+            </div>
+        `).join('');
+}
+
+function renderRoleSpecificStats(orders) {
+    const container = document.getElementById('role-stats-content');
+    
+    if (currentUser.role === 'ADMIN') {
+        const pendingApprovals = orders.filter(o => o.status === 'PENDING_VERIFICATION').length;
+        const completedOrders = orders.filter(o => o.status === 'COMPLETED').length;
+        const closedOrders = orders.filter(o => o.status === 'CLOSED').length;
+        
+        container.innerHTML = `
+            <div class="role-stat-item">
+                <h4>Pending Approvals</h4>
+                <p><strong>${pendingApprovals}</strong> orders awaiting verification</p>
+            </div>
+            <div class="role-stat-item">
+                <h4>Completed Orders</h4>
+                <p><strong>${completedOrders}</strong> orders ready for repayment</p>
+            </div>
+            <div class="role-stat-item">
+                <h4>Closed Orders</h4>
+                <p><strong>${closedOrders}</strong> orders fully processed and closed</p>
+            </div>
+        `;
+    } else if (currentUser.role === 'SUPPLIER') {
+        const myOrders = orders.filter(o => o.supplier_id === currentUser.id);
+        const myValue = myOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+        const activeMilestones = myOrders.reduce((sum, o) => 
+            sum + (o.milestones?.filter(m => m.status === 'PENDING').length || 0), 0);
+        
+        container.innerHTML = `
+            <div class="role-stat-item">
+                <h4>My Orders</h4>
+                <p><strong>${myOrders.length}</strong> orders created</p>
+            </div>
+            <div class="role-stat-item">
+                <h4>Total Value</h4>
+                <p><strong>$${myValue.toLocaleString()}</strong> in order value</p>
+            </div>
+            <div class="role-stat-item">
+                <h4>Active Milestones</h4>
+                <p><strong>${activeMilestones}</strong> milestones ready to complete</p>
+            </div>
+        `;
+    } else if (currentUser.role === 'LENDER') {
+        const fundedOrders = orders.filter(o => o.lender_id === currentUser.id && o.funds_locked);
+        const totalFunded = fundedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+        const activeLoans = fundedOrders.filter(o => o.status !== 'CLOSED').length;
+        
+        container.innerHTML = `
+            <div class="role-stat-item">
+                <h4>Funded Orders</h4>
+                <p><strong>${fundedOrders.length}</strong> orders financed</p>
+            </div>
+            <div class="role-stat-item">
+                <h4>Total Funded</h4>
+                <p><strong>$${totalFunded.toLocaleString()}</strong> in financing</p>
+            </div>
+            <div class="role-stat-item">
+                <h4>Active Loans</h4>
+                <p><strong>${activeLoans}</strong> loans currently outstanding</p>
+            </div>
+        `;
     }
 }

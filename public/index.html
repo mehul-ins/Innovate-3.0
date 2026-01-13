@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supply Chain Financing - Dashboard</title>
+    <title>FlowFund - Supply Chain Financing</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
     <!-- Login Section -->
     <div id="login-section">
         <div class="container">
-            <h1>Supply Chain Financing Dashboard</h1>
+            <h1>FlowFund</h1>
             <form id="login-form">
                 <h2>Login</h2>
                 <div class="form-group">
@@ -40,7 +40,11 @@
     <!-- Dashboard Section -->
     <div id="dashboard-section" style="display: none;">
         <div class="header">
-            <h1>Supply Chain Financing Dashboard</h1>
+            <h1>FlowFund</h1>
+            <nav class="header-nav">
+                <a href="#" onclick="showDashboard(); return false;" class="nav-link active">Dashboard</a>
+                <a href="#" onclick="showStatistics(); return false;" class="nav-link">Statistics</a>
+            </nav>
             <div class="user-info">
                 <span id="user-role"></span>
                 <button onclick="logout()">Logout</button>
@@ -87,27 +91,6 @@
             </div>
 
             <!-- Create Order Modal (SUPPLIER only) -->
-                <style>
-                    .dashboard-card {
-                        background: #20232E;
-                        border-radius: 12px;
-                        box-shadow: 0 2px 8px rgba(58,141,255,0.08);
-                        padding: 24px 18px;
-                        margin-bottom: 0;
-                        display: flex;
-                        flex-direction: column;
-                        align-items: flex-start;
-                    }
-                    .dashboard-card h3 {
-                        color: #8fa1c7;
-                        font-size: 16px;
-                        font-weight: 500;
-                        margin-bottom: 10px;
-                    }
-                    .dashboard-value {
-                        font-size: 32px;
-                        font-weight: 700;
-                        color: #3A8DFF;
                         margin-bottom: 4px;
                     }
                 </style>
@@ -188,21 +171,34 @@
 
     <style>
         .dashboard-card {
-            background: #1a1a1a;
+            background: rgba(26, 26, 26, 0.6);
             border-radius: 14px;
-            border: 1px solid rgba(255, 138, 51, 0.15);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 138, 51, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             padding: 26px 20px;
             margin-bottom: 0;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
             transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .dashboard-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 138, 51, 0.4), transparent);
         }
         .dashboard-card:hover {
-            border-color: rgba(255, 138, 51, 0.3);
-            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.5);
-            transform: translateY(-3px);
+            border-color: rgba(255, 138, 51, 0.4);
+            box-shadow: 0 12px 48px rgba(255, 138, 51, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            transform: translateY(-5px);
         }
         .dashboard-card h3 {
             color: #b8b8b8;
@@ -210,7 +206,7 @@
             font-weight: 500;
             margin-bottom: 12px;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.12em;
         }
         .dashboard-value {
             font-size: 34px;
@@ -218,9 +214,121 @@
             color: #ff8a33;
             margin-bottom: 4px;
             letter-spacing: -0.02em;
-            text-shadow: 0 0 20px rgba(255, 138, 51, 0.15);
+            text-shadow: 0 0 30px rgba(255, 138, 51, 0.3);
+            filter: drop-shadow(0 0 8px rgba(255, 138, 51, 0.4));
         }
     </style>
+
+    <!-- Statistics Section -->
+    <div id="statistics-section" style="display: none;">
+        <div class="header">
+            <h1>FlowFund</h1>
+            <nav class="header-nav">
+                <a href="#" onclick="showDashboard(); return false;" class="nav-link">Dashboard</a>
+                <a href="#" onclick="showStatistics(); return false;" class="nav-link active">Statistics</a>
+            </nav>
+            <div class="user-info">
+                <span id="user-role-stats"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="panel">
+                <h2>Overall Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 3v18h18"/>
+                                <path d="M18 17V9"/>
+                                <path d="M13 17V5"/>
+                                <path d="M8 17v-3"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Total Orders</h3>
+                            <div class="stat-value" id="stats-total-orders">--</div>
+                            <div class="stat-detail" id="stats-orders-breakdown">--</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 6v12"/>
+                                <path d="M15 9H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H9"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Total Value</h3>
+                            <div class="stat-value" id="stats-total-value">--</div>
+                            <div class="stat-detail" id="stats-value-breakdown">--</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <circle cx="12" cy="12" r="6"/>
+                                <circle cx="12" cy="12" r="2"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Milestones</h3>
+                            <div class="stat-value" id="stats-total-milestones">--</div>
+                            <div class="stat-detail" id="stats-milestone-breakdown">--</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="5" width="20" height="14" rx="2"/>
+                                <path d="M2 10h20"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Transactions</h3>
+                            <div class="stat-value" id="stats-total-transactions">--</div>
+                            <div class="stat-detail" id="stats-transaction-breakdown">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Financial Overview</h2>
+                <div class="financial-grid">
+                    <div class="financial-card">
+                        <h4>Funds Locked</h4>
+                        <div class="financial-value" id="stats-funds-locked">$--</div>
+                    </div>
+                    <div class="financial-card">
+                        <h4>Funds Released</h4>
+                        <div class="financial-value" id="stats-funds-released">$--</div>
+                    </div>
+                    <div class="financial-card">
+                        <h4>Escrow Balance</h4>
+                        <div class="financial-value" id="stats-escrow-balance">$--</div>
+                    </div>
+                    <div class="financial-card">
+                        <h4>Average Order Value</h4>
+                        <div class="financial-value" id="stats-avg-order">$--</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Status Breakdown</h2>
+                <div id="stats-status-chart" class="status-breakdown"></div>
+            </div>
+
+            <div class="panel" id="role-specific-stats">
+                <h2 id="role-stats-title">Role Specific Statistics</h2>
+                <div id="role-stats-content"></div>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>
