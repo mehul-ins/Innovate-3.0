@@ -18,6 +18,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/order'));
+app.use('/api/milestones', require('./routes/milestone'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -26,7 +27,8 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
-      orders: '/api/orders'
+      orders: '/api/orders',
+      milestones: '/api/milestones'
     }
   });
 });

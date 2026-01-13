@@ -1,4 +1,6 @@
 const Order = require('../models/Order');
+const Milestone = require('../models/Milestone');
+const { MILESTONE_STATUS, MILESTONE_TYPES } = require('../config/constants');
 const { ORDER_STATUS } = require('../config/constants');
 
 /**
@@ -174,9 +176,29 @@ exports.approveOrder = async (req, res) => {
     order.funds_locked = true;
     await order.save();
 
+    // Auto-generate milestones when order is approved
+    // This ensures transparent payment flow tied to deliverables
+    const milestones = [];
+    MILESTONE_TYPES.forEach((milestone, index) => {
+      const amount = (order.value * milestone.percentage) / 100;
+      milestones.push({
+        order_id: order._id,
+        name: milestone.name,
+        amount: amount,
+        percentage: milestone.percentage,
+        // First milestone is PENDING (payment can start immediately)
+        // Subsequent milestones are LOCKED (waiting for previous to complete)
+        status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
+        order: index + 1
+      });
+    });
+
+    // Insert all milestones
+    await Milestone.insertMany(milestones);
+
     res.status(200).json({
       success: true,
-      message: 'Order approved successfully. Funds locked for financing.',
+      message: 'Order approved successfully. Funds locked for financing. Milestones generated.',
       order: {
         id: order._id,
         order_id: order.order_id,
@@ -189,7 +211,13 @@ exports.approveOrder = async (req, res) => {
         created_by: order.created_by,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
-      }
+      },
+      milestones: milestones.map(m => ({
+        name: m.name,
+        amount: m.amount,
+        percentage: m.percentage,
+        status: m.status
+      }))
     });
   } catch (error) {
     res.status(500).json({

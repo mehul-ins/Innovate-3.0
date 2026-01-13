@@ -21,7 +21,49 @@ const ORDER_STATUS = {
   CLOSED: 'CLOSED'
 };
 
+/**
+ * Milestone Status Constants
+ * 
+ * Milestone Lifecycle:
+ * 1. LOCKED - Funds for this milestone are reserved but cannot be released yet
+ *    - Used to prevent early cash withdrawal
+ *    - First milestone starts as PENDING (payment can begin)
+ *    - Subsequent milestones locked until previous one completes
+ * 2. PENDING - Milestone is ready for completion
+ *    - Supplier can submit proof of completion
+ *    - Funds can be released upon approval
+ * 3. COMPLETED - Milestone completed and funds released
+ *    - Supplier received payment
+ *    - Next milestone becomes PENDING
+ */
+const MILESTONE_STATUS = {
+  LOCKED: 'LOCKED',
+  PENDING: 'PENDING',
+  COMPLETED: 'COMPLETED'
+};
+
+/**
+ * Milestone Types & Percentages
+ * Must sum to 100%
+ */
+const MILESTONE_TYPES = [
+  {
+    name: 'Raw Material',
+    percentage: 40
+  },
+  {
+    name: 'Production',
+    percentage: 40
+  },
+  {
+    name: 'Delivery',
+    percentage: 20
+  }
+];
+
 module.exports = {
   ROLES,
-  ORDER_STATUS
+  ORDER_STATUS,
+  MILESTONE_STATUS,
+  MILESTONE_TYPES
 };

@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "seed": "node scripts/seed.js",
     "test:phase1": "node scripts/test-phase1.js",
-    "test:phase2": "node scripts/test-phase2.js"
+    "test:phase2": "node scripts/test-phase2.js",
+    "test:phase3": "node scripts/test-phase3.js"
   },
   "keywords": [
     "express",
