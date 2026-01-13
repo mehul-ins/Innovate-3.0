@@ -158,9 +158,10 @@ exports.createOrder = async (req, res) => {
 // @access  Private (ADMIN only)
 exports.getAllOrders = async (req, res) => {
   try {
-    // Retrieve all orders and populate supplier information
+    // Retrieve all orders and populate supplier and lender information
     const orders = await Order.find()
       .populate('created_by', 'name email role')
+      .populate('lender_id', 'name email')
       .sort({ createdAt: -1 }); // Most recent first
 
     res.status(200).json({
@@ -174,7 +175,9 @@ exports.getAllOrders = async (req, res) => {
         delivery_date: order.delivery_date,
         status: order.status,
         funds_locked: order.funds_locked,
+        lender_approval_status: order.lender_approval_status,
         created_by: order.created_by,
+        lender_id: order.lender_id,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
       }))
@@ -314,6 +317,120 @@ exports.approveOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error approving order',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Lock funds for lender-approved order
+ * @route   PATCH /api/orders/:id/lock-funds
+ * @access  Private (ADMIN only)
+ * 
+ * Admin-Controlled Fund Locking:
+ * 1. Lender approves funding → status: LENDER_APPROVED, funds_locked: false
+ * 2. Admin reviews lender-approved order
+ * 3. Admin triggers fund lock → funds_locked: true
+ * 4. System creates LOCK transaction in ledger
+ * 5. Funds are now locked and cannot be released without admin control
+ * 
+ * Rules:
+ * - Only ADMIN can lock funds
+ * - Only LENDER_APPROVED orders can have funds locked
+ * - Supplier cannot trigger release
+ * - Admin acts as controller only
+ */
+exports.lockFunds = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate order ID format
+    if (!id || id.length !== 24) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order ID'
+      });
+    }
+
+    // Find order
+    const order = await Order.findById(id)
+      .populate('created_by', 'name email')
+      .populate('lender_id', 'name email');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Prevent actions on CLOSED orders
+    if (order.status === ORDER_STATUS.CLOSED) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot lock funds. Order is CLOSED. No further actions allowed.',
+        current_status: order.status
+      });
+    }
+
+    // Only LENDER_APPROVED orders can have funds locked
+    if (order.status !== ORDER_STATUS.LENDER_APPROVED) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot lock funds. Order must be LENDER_APPROVED. Current status: ${order.status}`,
+        currentStatus: order.status,
+        requiredStatus: ORDER_STATUS.LENDER_APPROVED
+      });
+    }
+
+    // Check if funds are already locked
+    if (order.funds_locked) {
+      return res.status(400).json({
+        success: false,
+        message: 'Funds are already locked for this order.',
+        funds_locked: order.funds_locked
+      });
+    }
+
+    // Lock funds
+    order.funds_locked = true;
+    await order.save();
+
+    // Create LOCK transaction in mock escrow ledger
+    // This records that the full order value is now reserved in escrow
+    const transaction = await Transaction.create({
+      order_id: order._id,
+      milestone_id: null, // LOCK transactions don't associate with a specific milestone
+      type: TRANSACTION_TYPE.LOCK,
+      amount: order.value,
+      description: `Order ${order.order_id} - Funds locked by admin. Lender: ${order.lender_id?.name || 'N/A'}. Total: $${order.value}`,
+      status: 'RECORDED'
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Funds locked successfully. Transaction recorded in ledger.',
+      order: {
+        id: order._id,
+        order_id: order.order_id,
+        buyer_name: order.buyer_name,
+        value: order.value,
+        status: order.status,
+        funds_locked: order.funds_locked,
+        lender: order.lender_id
+      },
+      transaction: {
+        id: transaction._id,
+        type: transaction.type,
+        amount: transaction.amount,
+        description: transaction.description,
+        createdAt: transaction.createdAt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error locking funds',
       error: error.message
     });
   }

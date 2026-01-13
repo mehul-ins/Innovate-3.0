@@ -3,15 +3,13 @@
     <%- include('partials/supplierOrderForm') %>
   <% } else if (role === 'LENDER') { %>
     <%- include('partials/lenderDashboard') %>
+  <% } else if (role === 'ADMIN') { %>
+    <%- include('partials/adminDashboard') %>
   <% } else { %>
     <div class="panel">
       <h2>Actions</h2>
       <div>
-        <% if (role === 'ADMIN') { %>
-          <p>You can approve orders, verify proofs, and release funds.</p>
-        <% } else { %>
-          <p>Dashboard role not specified.</p>
-        <% } %>
+        <p>Dashboard role not specified.</p>
       </div>
     </div>
 

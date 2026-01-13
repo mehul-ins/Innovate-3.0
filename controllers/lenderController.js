@@ -195,7 +195,7 @@ exports.approveFunding = async (req, res) => {
     order.status = ORDER_STATUS.LENDER_APPROVED;
     order.lender_approval_status = 'APPROVED';
     order.lender_approval_date = new Date();
-    order.funds_locked = true;
+    order.funds_locked = false; // Admin will lock funds separately
     await order.save();
 
     if (milestone_timelines && Array.isArray(milestone_timelines)) {
@@ -227,14 +227,8 @@ exports.approveFunding = async (req, res) => {
       await Milestone.insertMany(milestones);
     }
 
-    await Transaction.create({
-      order_id: order._id,
-      milestone_id: null,
-      type: TRANSACTION_TYPE.LOCK,
-      amount: order.value,
-      description: `Order ${order.order_id} approved by lender. Funds locked in escrow. Total: $${order.value}`,
-      status: 'RECORDED'
-    });
+    // Note: Transaction/LOCK will be created by admin when they lock funds
+    // Lender approval does NOT lock funds - admin controls fund locking
 
     await Notification.updateMany(
       { order_id: order._id, user_id: lenderId, type: 'FUNDING_REQUEST' },
@@ -243,14 +237,15 @@ exports.approveFunding = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Funding approved successfully. Funds locked.',
+      message: 'Funding approved successfully. Awaiting admin to lock funds.',
       order: {
         id: order._id,
         order_id: order.order_id,
         status: order.status,
         lender_approval_status: order.lender_approval_status,
         funds_locked: order.funds_locked,
-        lender_approval_date: order.lender_approval_date
+        lender_approval_date: order.lender_approval_date,
+        note: 'Admin must lock funds separately'
       }
     });
   } catch (error) {

@@ -1,0 +1,217 @@
+<div class="panel">
+  <h2>Orders Pending Fund Lock</h2>
+  <div id="admin-pending-lock">
+    <p>Loading orders...</p>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Transaction Ledger</h2>
+  <div id="admin-ledger">
+    <p>Loading ledger...</p>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const API_BASE = '/api';
+
+    async function loadPendingLockOrders() {
+      const container = document.getElementById('admin-pending-lock');
+      if (!container) return;
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        container.innerHTML = '<p class="error">Please login as admin.</p>';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/orders`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (res.ok && data.orders) {
+          // Filter orders that are LENDER_APPROVED but funds not locked
+          const pendingLock = data.orders.filter(o => 
+            o.status === 'LENDER_APPROVED' && !o.funds_locked
+          );
+
+          if (pendingLock.length === 0) {
+            container.innerHTML = '<p class="empty-state">No orders pending fund lock.</p>';
+            return;
+          }
+
+          container.innerHTML = `
+            <div style="margin-bottom: 1rem;">
+              <p><strong>${pendingLock.length} order${pendingLock.length !== 1 ? 's' : ''} awaiting fund lock</strong></p>
+            </div>
+            ${pendingLock.map(order => `
+              <div class="order-card" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; background: #fff3cd;">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                  <h3 style="margin: 0;">Order: ${order.order_id}</h3>
+                  <span class="status-badge" style="padding: 0.25rem 0.5rem; background: #fff3cd; border-radius: 3px; color: #856404;">LENDER APPROVED</span>
+                </div>
+                <div style="margin-bottom: 0.5rem;">
+                  <p><strong>Buyer:</strong> ${order.buyer_name}</p>
+                  <p><strong>Order Value:</strong> $${order.value.toLocaleString()}</p>
+                  <p><strong>Supplier:</strong> ${order.created_by?.name || 'N/A'}</p>
+                  <p><strong>Lender:</strong> ${order.lender_id?.name || 'N/A'}</p>
+                  <p><strong>Funds Locked:</strong> <span style="color: #dc3545; font-weight: bold;">NO</span></p>
+                </div>
+                <div style="margin-top: 1rem;">
+                  <button onclick="lockFunds('${order.id}')" class="btn-success" style="padding: 0.5rem 1rem;">
+                    🔒 Lock Funds
+                  </button>
+                </div>
+              </div>
+            `).join('')}
+          `;
+        } else {
+          container.innerHTML = `<p class="error">Error: ${data.message || 'Unknown error'}</p>`;
+        }
+      } catch (err) {
+        console.error('Error loading orders:', err);
+        container.innerHTML = '<p class="error">Error connecting to server.</p>';
+      }
+    }
+
+    async function loadLedger() {
+      const container = document.getElementById('admin-ledger');
+      if (!container) return;
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        container.innerHTML = '<p class="error">Please login as admin.</p>';
+        return;
+      }
+
+      try {
+        // Get all orders to fetch transactions
+        const ordersRes = await fetch(`${API_BASE}/orders`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const ordersData = await ordersRes.json();
+
+        if (!ordersRes.ok || !ordersData.orders) {
+          container.innerHTML = '<p class="error">Error loading orders.</p>';
+          return;
+        }
+
+        // Fetch transactions for all orders
+        const allTransactions = [];
+        for (const order of ordersData.orders) {
+          try {
+            const txRes = await fetch(`${API_BASE}/transactions/order/${order.id}`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const txData = await txRes.json();
+            if (txRes.ok && txData.transactions) {
+              allTransactions.push(...txData.transactions.map(t => ({
+                ...t,
+                order_id_display: order.order_id
+              })));
+            }
+          } catch (err) {
+            console.error(`Error loading transactions for order ${order.id}:`, err);
+          }
+        }
+
+        // Sort by date (newest first)
+        allTransactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        if (allTransactions.length === 0) {
+          container.innerHTML = '<p class="empty-state">No transactions recorded yet.</p>';
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="margin-bottom: 1rem;">
+            <p><strong>Total Transactions: ${allTransactions.length}</strong></p>
+          </div>
+          <div style="max-height: 400px; overflow-y: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                  <th style="padding: 0.5rem; text-align: left;">Date</th>
+                  <th style="padding: 0.5rem; text-align: left;">Order</th>
+                  <th style="padding: 0.5rem; text-align: left;">Type</th>
+                  <th style="padding: 0.5rem; text-align: right;">Amount</th>
+                  <th style="padding: 0.5rem; text-align: left;">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allTransactions.map(tx => `
+                  <tr style="border-bottom: 1px solid #dee2e6;">
+                    <td style="padding: 0.5rem; font-size: 0.85rem;">${new Date(tx.createdAt).toLocaleString()}</td>
+                    <td style="padding: 0.5rem;">${tx.order_id_display || 'N/A'}</td>
+                    <td style="padding: 0.5rem;">
+                      <span class="tx-type tx-${tx.type.toLowerCase()}" style="padding: 0.25rem 0.5rem; border-radius: 3px; font-weight: bold;">
+                        ${tx.type}
+                      </span>
+                    </td>
+                    <td style="padding: 0.5rem; text-align: right; font-weight: bold;">$${tx.amount.toLocaleString()}</td>
+                    <td style="padding: 0.5rem; font-size: 0.85rem; color: #666;">${tx.description || 'N/A'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      } catch (err) {
+        console.error('Error loading ledger:', err);
+        container.innerHTML = '<p class="error">Error loading transaction ledger.</p>';
+      }
+    }
+
+    async function lockFunds(orderId) {
+      if (!confirm('Lock funds for this order? This will create a ledger entry and reserve funds in escrow.')) {
+        return;
+      }
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        alert('Please login as admin.');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/orders/${orderId}/lock-funds`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          alert(`Funds locked successfully!\n\nTransaction recorded:\n${data.transaction.description}\nAmount: $${data.transaction.amount.toLocaleString()}`);
+          loadPendingLockOrders();
+          loadLedger(); // Refresh ledger
+        } else {
+          alert(`Error: ${data.message || 'Failed to lock funds'}`);
+        }
+      } catch (err) {
+        console.error('Error locking funds:', err);
+        alert('Error connecting to server.');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      loadPendingLockOrders();
+      loadLedger();
+
+      // Refresh every 30 seconds
+      setInterval(() => {
+        loadPendingLockOrders();
+        loadLedger();
+      }, 30000);
+    });
+
+    // Expose function globally for onclick handlers
+    window.lockFunds = lockFunds;
+  })();
+</script>

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createOrder, getAllOrders, approveOrder, repayOrder } = require('../controllers/orderController');
+const { createOrder, getAllOrders, approveOrder, lockFunds, repayOrder } = require('../controllers/orderController');
 const { getOrderMilestones } = require('../controllers/milestoneController');
 const { protect, supplierOnly, adminOnly } = require('../middleware/auth');
 
@@ -29,6 +29,10 @@ router.get('/', protect, getAllOrders);
 // Changes status from PENDING_VERIFICATION to APPROVED
 // Locks funds to prevent cancellation and enable lender financing
 router.patch('/:id/approve', protect, adminOnly, approveOrder);
+
+// Lock funds for lender-approved order - ADMIN only
+// Admin-controlled fund locking after lender approval
+router.patch('/:id/lock-funds', protect, adminOnly, lockFunds);
 
 // Repay order and close - ADMIN only (Phase 7)
 // Changes status from COMPLETED to CLOSED
