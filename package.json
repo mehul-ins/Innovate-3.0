@@ -10,7 +10,8 @@
     "test:phase1": "node scripts/test-phase1.js",
     "test:phase2": "node scripts/test-phase2.js",
     "test:phase3": "node scripts/test-phase3.js",
-    "test:phase4": "node scripts/test-phase4.js"
+    "test:phase4": "node scripts/test-phase4.js",
+    "test:phase5": "node scripts/test-phase5.js"
   },
   "keywords": [
     "express",

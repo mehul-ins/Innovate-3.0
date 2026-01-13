@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getOrderMilestones } = require('../controllers/milestoneController');
+const { getOrderMilestones, completeMilestone } = require('../controllers/milestoneController');
 const { protect } = require('../middleware/auth');
 
 /**
@@ -8,6 +8,9 @@ const { protect } = require('../middleware/auth');
  * 
  * Phase 3 Implementation:
  * - GET /api/orders/:id/milestones - Get milestones for an order
+ * 
+ * Phase 5 Implementation:
+ * - PATCH /api/milestones/:id/complete - Complete milestone with proof
  * 
  * Milestone Lifecycle:
  * 1. First milestone: PENDING (payment can start)
@@ -17,5 +20,9 @@ const { protect } = require('../middleware/auth');
 
 // Get all milestones for an order
 router.get('/:orderId', protect, getOrderMilestones);
+
+// Complete milestone (submit proof and approve)
+// Creates RELEASE transaction and unlocks next milestone
+router.patch('/:id/complete', protect, completeMilestone);
 
 module.exports = router;

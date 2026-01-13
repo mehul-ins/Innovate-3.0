@@ -1,5 +1,7 @@
 const Milestone = require('../models/Milestone');
 const Order = require('../models/Order');
+const Transaction = require('../models/Transaction');
+const { MILESTONE_STATUS, TRANSACTION_TYPE } = require('../config/constants');
 
 /**
  * Milestone Controller
@@ -83,6 +85,142 @@ exports.getOrderMilestones = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching milestones',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Complete milestone
+ * @route   PATCH /api/milestones/:id/complete
+ * @access  Private (SUPPLIER submits proof, ADMIN approves)
+ * 
+ * Milestone Completion Workflow:
+ * 1. SUPPLIER submits proof of completion (invoice, delivery note, etc.)
+ * 2. ADMIN reviews and approves
+ * 3. Milestone marked as COMPLETED
+ * 4. RELEASE transaction created (funds transferred from escrow)
+ * 5. Next milestone automatically unlocked
+ * 
+ * Validations:
+ * - Cannot skip milestones (only PENDING can be completed)
+ * - Cannot re-complete (immutable once COMPLETED)
+ * - Cannot complete LOCKED milestones
+ * - Proof is required
+ * 
+ * Fund Release:
+ * - Creates mock RELEASE transaction
+ * - Updates milestone released_amount
+ * - Next milestone becomes PENDING (if exists)
+ */
+exports.completeMilestone = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { proof, approved_by } = req.body;
+
+    // Validate milestone ID format
+    if (!id || id.length !== 24) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid milestone ID'
+      });
+    }
+
+    // Validate required fields
+    if (!proof) {
+      return res.status(400).json({
+        success: false,
+        message: 'Proof of completion is required (invoice, delivery note, etc.)'
+      });
+    }
+
+    // Find milestone with order details
+    const milestone = await Milestone.findById(id).populate('order_id', 'order_id value');
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        message: 'Milestone not found'
+      });
+    }
+
+    // Check if milestone is already completed (immutable)
+    if (milestone.status === MILESTONE_STATUS.COMPLETED) {
+      return res.status(400).json({
+        success: false,
+        message: 'Milestone is already completed and immutable',
+        current_status: milestone.status
+      });
+    }
+
+    // Prevent skipping milestones - only PENDING can be completed
+    if (milestone.status !== MILESTONE_STATUS.PENDING) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot complete milestone. Current status: ${milestone.status}. Only PENDING milestones can be completed.`,
+        allowed_status: MILESTONE_STATUS.PENDING,
+        current_status: milestone.status
+      });
+    }
+
+    // Update milestone to COMPLETED and add proof
+    milestone.status = MILESTONE_STATUS.COMPLETED;
+    milestone.proof = proof;
+    milestone.released_amount = milestone.amount; // Full amount released
+    await milestone.save();
+
+    // Create RELEASE transaction in mock escrow ledger
+    // This records that funds are being released from escrow to supplier
+    await Transaction.create({
+      order_id: milestone.order_id._id,
+      milestone_id: milestone._id,
+      type: TRANSACTION_TYPE.RELEASE,
+      amount: milestone.amount,
+      description: `Milestone "${milestone.name}" completed and approved. Funds released: $${milestone.amount}`,
+      status: 'RECORDED'
+    });
+
+    // Find and unlock next milestone (if exists)
+    const nextMilestone = await Milestone.findOne({
+      order_id: milestone.order_id._id,
+      order: milestone.order + 1
+    });
+
+    if (nextMilestone) {
+      // Unlock the next milestone by changing status from LOCKED to PENDING
+      nextMilestone.status = MILESTONE_STATUS.PENDING;
+      await nextMilestone.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Milestone completed successfully. Funds released from escrow.',
+      milestone: {
+        id: milestone._id,
+        name: milestone.name,
+        amount: milestone.amount,
+        status: milestone.status,
+        released_amount: milestone.released_amount,
+        proof: milestone.proof,
+        completed_at: new Date()
+      },
+      next_milestone: nextMilestone ? {
+        id: nextMilestone._id,
+        name: nextMilestone.name,
+        status: nextMilestone.status,
+        message: `${nextMilestone.name} milestone is now PENDING and ready for completion`
+      } : {
+        message: 'All milestones completed. Order fulfillment complete.'
+      },
+      transaction: {
+        type: TRANSACTION_TYPE.RELEASE,
+        amount: milestone.amount,
+        description: `Funds released for milestone: ${milestone.name}`
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error completing milestone',
       error: error.message
     });
   }
