@@ -488,6 +488,7 @@ exports.completeMilestone = async (req, res) => {
       status: 'RECORDED'
     });
 
+
     // Enforce only one PENDING milestone at a time
     // Find next milestone by order sequence
     const nextMilestone = await Milestone.findOne({

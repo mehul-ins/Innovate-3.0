@@ -202,39 +202,70 @@ exports.approveFunding = async (req, res) => {
       });
     }
 
+    // Milestone-wise approval: Only create milestone for the ones provided in milestone_timelines
+    // This allows lender to approve one milestone at a time
     order.status = ORDER_STATUS.LENDER_APPROVED;
     order.lender_approval_status = 'APPROVED';
     order.lender_approval_date = new Date();
     order.funds_locked = false; // Admin will lock funds separately
     await order.save();
 
-    if (milestone_timelines && Array.isArray(milestone_timelines)) {
-      const milestones = [];
-      const approvalDate = new Date();
-
-      order.milestones.forEach((milestone, index) => {
-        const timeline = milestone_timelines.find(t => t.milestone_name === milestone.name);
-        const amount = (order.value * milestone.percentage) / 100;
+    if (milestone_timelines && Array.isArray(milestone_timelines) && milestone_timelines.length > 0) {
+      try {
+        const milestones = [];
+        const approvalDate = new Date();
         
-        let dueDate = null;
-        if (timeline && timeline.timeline_days) {
-          dueDate = new Date(approvalDate);
-          dueDate.setDate(dueDate.getDate() + timeline.timeline_days);
+        // Count how many milestones already exist for this order
+        const existingMilestoneCount = await Milestone.countDocuments({ order_id: order._id });
+        console.log(`[approveFunding] Existing milestones for order ${order.order_id}:`, existingMilestoneCount);
+
+        // Only create milestones for the ones in milestone_timelines
+        for (let i = 0; i < milestone_timelines.length; i++) {
+          const timelineItem = milestone_timelines[i];
+          console.log(`[approveFunding] Processing milestone ${i}: ${timelineItem.milestone_name}`);
+          
+          const orderMilestone = order.milestones.find(m => m.name === timelineItem.milestone_name);
+          
+          if (!orderMilestone) {
+            console.warn(`[approveFunding] Milestone ${timelineItem.milestone_name} not found in order`);
+            continue;
+          }
+          
+          const amount = (order.value * orderMilestone.percentage) / 100;
+          
+          let dueDate = null;
+          if (timelineItem.timeline_days) {
+            dueDate = new Date(approvalDate);
+            dueDate.setDate(dueDate.getDate() + timelineItem.timeline_days);
+          }
+          
+          // Calculate proper order number based on existing milestones
+          const milestoneOrder = existingMilestoneCount + i + 1;
+
+          milestones.push({
+            order_id: order._id,
+            name: orderMilestone.name,
+            amount: amount,
+            percentage: orderMilestone.percentage,
+            status: existingMilestoneCount === 0 && i === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
+            order: milestoneOrder,
+            due_date: dueDate,
+            timeline_days: timelineItem.timeline_days
+          });
         }
 
-        milestones.push({
-          order_id: order._id,
-          name: milestone.name,
-          amount: amount,
-          percentage: milestone.percentage,
-          status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
-          order: index + 1,
-          due_date: dueDate,
-          timeline_days: timeline ? timeline.timeline_days : null
+        if (milestones.length > 0) {
+          await Milestone.insertMany(milestones);
+          console.log(`[approveFunding] Created ${milestones.length} milestone(s) for order ${order.order_id}`);
+        }
+      } catch (milestoneError) {
+        console.error(`[approveFunding] Error creating milestones:`, milestoneError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Error creating milestones',
+          error: milestoneError.message
         });
-      });
-
-      await Milestone.insertMany(milestones);
+      }
     }
 
     // Note: Transaction/LOCK will be created by admin when they lock funds
@@ -259,6 +290,8 @@ exports.approveFunding = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('[approveFunding] ERROR:', error.message);
+    console.error('[approveFunding] Stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Error approving funding',

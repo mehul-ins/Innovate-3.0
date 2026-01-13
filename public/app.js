@@ -324,6 +324,8 @@ function renderAnalyticsDashboard() {
 function renderOrders() {
     const container = document.getElementById('orders-container');
     
+    if (!container) return;
+    
     if (currentOrders.length === 0) {
         container.innerHTML = '<p class="empty-state">No orders found. Create an order to get started.</p>';
         return;
@@ -333,7 +335,7 @@ function renderOrders() {
         <div class="order-card">
             <div class="order-header">
                 <h3>${order.order_id}</h3>
-                <span class="status-badge status-${order.status.toLowerCase()}">${order.status.replace(/_/g, ' ')}</span>
+                <span class="status-badge status-${order.status.toLowerCase().replace(/_/g, '-')}">${order.status.replace(/_/g, ' ')}</span>
             </div>
             <div class="order-body">
                 <p><strong>Buyer:</strong> ${order.buyer_name}</p>
@@ -344,15 +346,23 @@ function renderOrders() {
             <div class="order-actions">
                 ${renderOrderActions(order)}
             </div>
-            ${order.status !== 'PENDING_VERIFICATION' ? `
-                <button onclick="viewOrderDetails('${order.id}')">View Milestones & Transactions</button>
-            ` : ''}
+            <button onclick="viewOrderDetails('${order.id}')">View Milestones & Transactions</button>
         </div>
     `).join('');
 }
 
 function renderOrderActions(order) {
     let actions = '';
+    
+    // LENDER: Approve pending lender approval orders
+    if (currentUser.role === 'LENDER' && order.status === 'PENDING_LENDER_APPROVAL') {
+        actions += `<button onclick="openLenderApprovalModal('${order.id}')" class="btn-success">✓ Approve Order</button>`;
+    }
+    
+    // ADMIN: Lock funds for lender-approved orders
+    if (currentUser.role === 'ADMIN' && order.status === 'LENDER_APPROVED' && !order.funds_locked) {
+        actions += `<button onclick="lockFunds('${order.id}')" class="btn-success">🔒 Lock Funds</button>`;
+    }
     
     // ADMIN: Can approve PENDING_VERIFICATION orders
     if (currentUser.role === 'ADMIN' && order.status === 'PENDING_VERIFICATION') {
@@ -367,6 +377,14 @@ function renderOrderActions(order) {
     // Status messages
     if (order.status === 'CLOSED') {
         actions += `<span class="info-text">Order closed - No further actions</span>`;
+    }
+    
+    if (order.status === 'PENDING_LENDER_APPROVAL' && currentUser.role !== 'LENDER') {
+        actions += `<span class="info-text">Awaiting lender approval</span>`;
+    }
+    
+    if (order.status === 'LENDER_APPROVED' && order.funds_locked) {
+        actions += `<span class="info-text" style="color: green;">✓ Funds Locked</span>`;
     }
     
     return actions;
@@ -431,9 +449,32 @@ function refreshOrders() {
 // Create Order Modal
 function openCreateOrderModal() {
     document.getElementById('create-order-modal').style.display = 'flex';
+    
+    // Auto-generate unique Order ID: ORD-TIMESTAMP-RANDOM
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    const orderId = `ORD-${timestamp}-${random}`;
+    const orderIdInput = document.getElementById('order-id');
+    if (orderIdInput) {
+        orderIdInput.value = orderId;
+        orderIdInput.readOnly = true;
+        orderIdInput.style.backgroundColor = '#f5f5f5';
+        orderIdInput.style.cursor = 'not-allowed';
+    }
+    
+    // Auto-fill Buyer Name from logged-in user
+    const buyerNameInput = document.getElementById('buyer-name');
+    if (buyerNameInput && currentUser) {
+        buyerNameInput.value = currentUser.name;
+        buyerNameInput.readOnly = true;
+        buyerNameInput.style.backgroundColor = '#f5f5f5';
+        buyerNameInput.style.cursor = 'not-allowed';
+    }
+    
     // Set min date to today
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('delivery-date').setAttribute('min', today);
+    
     // Load lenders into the dropdown if present
     if (typeof loadLendersForModal === 'function') {
         loadLendersForModal();
@@ -597,49 +638,260 @@ function renderOrderDetailsModal(orderId, milestonesData, transactionsData) {
         locked: 0 
     };
     
+    const order = currentOrders.find(o => o.id === orderId);
+    
     content.innerHTML = `
         <div class="details-section">
             <h3>Milestones (${summary.total_milestones})</h3>
-            <p><strong>Completed:</strong> ${summary.completed} | 
-               <strong>Pending:</strong> ${summary.pending} | 
-               <strong>Locked:</strong> ${summary.locked}</p>
+            <div style="display: flex; gap: 2rem; margin-bottom: 1rem;">
+                <p><strong>Completed:</strong> ${summary.completed}</p>
+                <p><strong>Pending:</strong> ${summary.pending}</p>
+                <p><strong>Locked:</strong> ${summary.locked}</p>
+            </div>
             
-            ${milestones.map(m => `
-                <div class="milestone-card">
-                    <div class="milestone-header">
-                        <strong>${m.name}</strong>
-                        <span class="status-badge status-${m.status.toLowerCase()}">${m.status.replace(/_/g, ' ')}</span>
+            ${milestones.map((m, idx) => `
+                <div class="milestone-card" style="margin-bottom: 1rem; padding: 1rem; border: 2px solid ${m.status === 'COMPLETED' ? '#22c55e' : m.status === 'PENDING' ? '#fbbf24' : '#6b7280'}; border-radius: 8px; background: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <strong style="font-size: 1.1rem;">${m.name}</strong>
+                        <span class="status-badge status-${m.status.toLowerCase()}" style="padding: 0.25rem 0.75rem; border-radius: 4px;">${m.status.replace(/_/g, ' ')}</span>
                     </div>
-                    <p>Amount: $${m.amount.toLocaleString()} (${m.percentage}%)</p>
-                    <p>Released: $${m.released_amount.toLocaleString()}</p>
-                    ${m.proof ? `<p><em>Proof: ${m.proof}</em></p>` : ''}
-                    ${m.status === 'PENDING' ? `
-                        <button onclick="openCompleteMilestoneModal('${m.id}', '${m.name}', ${m.amount})">
-                            Complete Milestone
-                        </button>
+                    <div style="display: flex; gap: 2rem; margin-bottom: 0.5rem;">
+                        <p style="margin: 0;"><strong>Amount:</strong> $${m.amount.toLocaleString()} (${m.percentage}%)</p>
+                        <p style="margin: 0;"><strong>Released:</strong> $${m.released_amount.toLocaleString()}</p>
+                    </div>
+                    ${m.proof_file_path ? `
+                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f0f9ff; border-radius: 4px;">
+                            <p style="margin: 0; font-size: 0.9rem;"><strong>📎 Proof:</strong> 
+                                <a href="${m.proof_url}" target="_blank" style="color: #0284c7;">View Document</a>
+                            </p>
+                            <p style="margin: 0.25rem 0 0 0; font-size: 0.85rem; color: #666;">
+                                Status: ${m.proof_verification_status || 'Not submitted'}
+                            </p>
+                        </div>
                     ` : ''}
+                    ${renderMilestoneActions(m, idx, milestones, order)}
                 </div>
             `).join('')}
+            
+            ${currentUser.role === 'LENDER' && canApproveNextMilestone(milestones, order) ? `
+                <div style="margin-top: 1.5rem; padding: 1rem; background: #dcfce7; border: 2px solid #22c55e; border-radius: 8px;">
+                    <p style="margin: 0 0 0.5rem 0; font-weight: 600; color: #166534;">
+                        ✓ Ready to Approve Next Milestone
+                    </p>
+                    <p style="margin: 0 0 1rem 0; font-size: 0.9rem; color: #166534;">
+                        The previous milestone has been completed. You can now approve the next milestone.
+                    </p>
+                    <button onclick="approveNextMilestone('${orderId}')" class="btn-success" style="width: 100%; padding: 0.75rem;">
+                        Approve Next Milestone
+                    </button>
+                </div>
+            ` : ''}
         </div>
         
-        <div class="details-section">
+        <div class="details-section" style="margin-top: 2rem;">
             <h3>Transactions</h3>
-            <p><strong>Total Locked:</strong> $${transactionsData.summary.total_locked.toLocaleString()} | 
-               <strong>Total Released:</strong> $${transactionsData.summary.total_released.toLocaleString()} | 
-               <strong>Balance:</strong> $${transactionsData.summary.escrow_balance.toLocaleString()}</p>
+            <div style="display: flex; gap: 2rem; margin-bottom: 1rem;">
+                <p><strong>Total Locked:</strong> $${transactionsData.summary.total_locked.toLocaleString()}</p>
+                <p><strong>Total Released:</strong> $${transactionsData.summary.total_released.toLocaleString()}</p>
+                <p><strong>Balance:</strong> $${transactionsData.summary.escrow_balance.toLocaleString()}</p>
+            </div>
             
-            ${transactions.map(t => `
-                <div class="transaction-item">
-                    <span class="tx-type tx-${t.type.toLowerCase()}">${t.type.replace(/_/g, ' ')}</span>
-                    <span>$${t.amount.toLocaleString()}</span>
-                    <span class="tx-date">${new Date(t.createdAt).toLocaleString()}</span>
-                    <p class="tx-desc">${t.description}</p>
+            ${transactions.length > 0 ? transactions.map(t => `
+                <div class="transaction-item" style="display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid #e5e7eb; align-items: center;">
+                    <div style="flex: 1;">
+                        <span class="tx-type tx-${t.type.toLowerCase()}" style="padding: 0.25rem 0.5rem; border-radius: 4px; background: ${t.type === 'LOCK' ? '#dbeafe' : '#dcfce7'}; font-weight: 600;">${t.type}</span>
+                        <p class="tx-desc" style="margin: 0.25rem 0 0 0; font-size: 0.9rem; color: #666;">${t.description}</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-weight: 600; font-size: 1.1rem;">$${t.amount.toLocaleString()}</div>
+                        <span class="tx-date" style="font-size: 0.8rem; color: #999;">${new Date(t.createdAt).toLocaleString()}</span>
+                    </div>
                 </div>
-            `).join('')}
+            `).join('') : '<p>No transactions yet</p>'}
         </div>
     `;
     
     document.getElementById('order-details-modal').style.display = 'flex';
+}
+
+function renderMilestoneActions(milestone, index, allMilestones, order) {
+    let actions = '';
+    
+    // SUPPLIER: Upload proof for PENDING milestones
+    if (currentUser.role === 'SUPPLIER' && milestone.status === 'PENDING' && !milestone.proof_file_path) {
+        actions += `
+            <button onclick="openUploadProofModal('${milestone.id}', '${milestone.name}')" style="margin-top: 0.75rem; width: 100%; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                📤 Upload Proof of Completion
+            </button>
+        `;
+    }
+    
+    // ADMIN: Verify proof
+    if (currentUser.role === 'ADMIN' && milestone.proof_verification_status === 'PENDING') {
+        actions += `
+            <button onclick="openVerifyProofModal('${milestone.id}', '${milestone.name}')" style="margin-top: 0.75rem; width: 100%; padding: 0.75rem; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                ✓ Verify Proof
+            </button>
+        `;
+    }
+    
+    // ADMIN: Complete milestone
+    if (currentUser.role === 'ADMIN' && milestone.status === 'PENDING' && milestone.proof_verification_status === 'VERIFIED') {
+        actions += `
+            <button onclick="openCompleteMilestoneModal('${milestone.id}', '${milestone.name}', ${milestone.amount})" style="margin-top: 0.75rem; width: 100%; padding: 0.75rem; background: #22c55e; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                ✓ Complete Milestone & Release Funds
+            </button>
+        `;
+    }
+    
+    return actions ? `<div style="margin-top: 0.75rem;">${actions}</div>` : '';
+}
+
+function canApproveNextMilestone(milestones, order) {
+    if (!order || !order.milestones) return false;
+    
+    // Check if there are completed milestones
+    const completedCount = milestones.filter(m => m.status === 'COMPLETED').length;
+    
+    // Check if next milestone exists in order but not yet created
+    const nextMilestoneIndex = completedCount; // 0-indexed
+    
+    return nextMilestoneIndex < order.milestones.length && 
+           !milestones.find(m => m.order === nextMilestoneIndex + 1);
+}
+
+async function approveNextMilestone(orderId) {
+    const order = currentOrders.find(o => o.id === orderId);
+    if (!order) {
+        alert('Order not found');
+        return;
+    }
+    
+    // Fetch current milestones
+    const response = await fetch(`${API_BASE}/orders/${orderId}/milestones`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const data = await response.json();
+    const milestones = data.milestones || [];
+    
+    // Find next milestone to approve
+    const completedCount = milestones.filter(m => m.status === 'COMPLETED').length;
+    const nextMilestone = order.milestones[completedCount];
+    
+    if (!nextMilestone) {
+        alert('No more milestones to approve');
+        return;
+    }
+    
+    // Show approval modal for next milestone
+    openNextMilestoneApprovalModal(orderId, nextMilestone, completedCount + 1);
+}
+
+function openNextMilestoneApprovalModal(orderId, milestone, milestoneNumber) {
+    const order = currentOrders.find(o => o.id === orderId);
+    const milestoneAmount = (order.value * milestone.percentage) / 100;
+    
+    let modal = document.getElementById('lender-approval-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'lender-approval-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>Approve Milestone ${milestoneNumber}</h2>
+            <div style="background: #f5f5f5; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <p><strong>Order:</strong> ${order.order_id}</p>
+                <p><strong>Buyer:</strong> ${order.buyer_name}</p>
+            </div>
+            
+            <div style="background: white; padding: 1rem; border: 2px solid #22c55e; border-radius: 4px; margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="font-size: 1.1rem;">${milestone.name}</strong>
+                        <div style="font-size: 0.9rem; color: #666; margin-top: 0.25rem;">
+                            ${milestone.percentage}% of order value
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 1.3rem; font-weight: 700; color: #22c55e;">
+                            $${milestoneAmount.toLocaleString()}
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 1rem;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+                        Set Delivery Timeline (Days):
+                    </label>
+                    <input type="number" 
+                           id="next-milestone-days"
+                           placeholder="Number of days" 
+                           min="1" 
+                           required 
+                           value="7"
+                           style="width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #ddd; border-radius: 4px;" />
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" onclick="submitNextMilestoneApproval('${orderId}', '${milestone.name}')" class="btn-success" style="flex: 1; padding: 1rem;">
+                    ✓ Approve Milestone
+                </button>
+                <button type="button" onclick="closeLenderApprovalModal()" style="flex: 1; padding: 1rem;">
+                    Cancel
+                </button>
+            </div>
+            <div id="approval-error-next" class="error" style="margin-top: 0.5rem;"></div>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+async function submitNextMilestoneApproval(orderId, milestoneName) {
+    const errorEl = document.getElementById('approval-error-next');
+    errorEl.textContent = '';
+    
+    const daysInput = document.getElementById('next-milestone-days');
+    const days = parseInt(daysInput.value);
+    
+    if (!days || days < 1) {
+        errorEl.textContent = 'Please enter a valid number of days (minimum 1)';
+        return;
+    }
+    
+    const milestone_timelines = [{
+        milestone_name: milestoneName,
+        timeline_days: days
+    }];
+    
+    try {
+        const response = await fetch(`${API_BASE}/orders/${orderId}/lender-approve`, {
+            method: 'PATCH',
+            headers: { 
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ milestone_timelines })
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert(`Milestone approved successfully!\\n\\nMilestone: ${milestoneName}\\nTimeline: ${days} days`);
+            closeLenderApprovalModal();
+            closeModal('order-details-modal');
+            refreshOrders();
+        } else {
+            errorEl.textContent = data.message || 'Failed to approve milestone';
+        }
+    } catch (error) {
+        errorEl.textContent = 'Error approving milestone';
+        console.error(error);
+    }
 }
 
 // Complete Milestone Modal
@@ -703,6 +955,266 @@ function openNotificationsModal() {
 window.onclick = function(event) {
     if (event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
+    }
+}
+
+// Lender Approval Modal Functions
+function openLenderApprovalModal(orderId) {
+    const order = currentOrders.find(o => o.id === orderId);
+    if (!order) {
+        alert('Order not found');
+        return;
+    }
+    
+    // Check if milestones exist in order
+    if (!order.milestones || order.milestones.length === 0) {
+        alert('Error: Order does not have milestones defined. Please contact support.');
+        console.error('Order missing milestones:', order);
+        return;
+    }
+    
+    // Check order status to determine which approval flow to show
+    if (order.status === 'PENDING_LENDER_APPROVAL') {
+        // First milestone approval
+        openFirstMilestoneApprovalModal(orderId);
+    } else if (order.status === 'LENDER_APPROVED') {
+        // Subsequent milestone approval or waiting for supplier
+        openNextMilestoneApprovalFlowModal(orderId);
+    } else {
+        alert(`Cannot approve order. Current status: ${order.status}`);
+    }
+}
+
+function openFirstMilestoneApprovalModal(orderId) {
+    const order = currentOrders.find(o => o.id === orderId);
+    const firstMilestone = order.milestones[0];
+    const firstMilestoneAmount = (order.value * firstMilestone.percentage) / 100;
+    
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('lender-approval-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'lender-approval-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 700px;">
+            <h2>Approve First Milestone</h2>
+            <div style="background: #f5f5f5; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <p><strong>Order:</strong> ${order.order_id}</p>
+                <p><strong>Buyer:</strong> ${order.buyer_name}</p>
+                <p><strong>Total Order Value:</strong> $${order.value.toLocaleString()}</p>
+                <p><strong>Delivery Date:</strong> ${new Date(order.delivery_date).toLocaleDateString()}</p>
+            </div>
+            
+            <div style="background: #fff3cd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border-left: 4px solid #ffc107;">
+                <p style="margin: 0; font-weight: 600; color: #856404;">📋 Milestone-wise Funding</p>
+                <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #856404;">
+                    You will approve ONE milestone at a time. After the supplier completes this milestone and provides proof, 
+                    you can approve the next milestone.
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <h3 style="margin-bottom: 0.5rem;">Approve: ${firstMilestone.name}</h3>
+                <div style="background: white; padding: 1rem; border: 2px solid #22c55e; border-radius: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <div>
+                            <strong style="font-size: 1.1rem;">${firstMilestone.name}</strong>
+                            <div style="font-size: 0.9rem; color: #666; margin-top: 0.25rem;">
+                                ${firstMilestone.percentage}% of order value
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.3rem; font-weight: 700; color: #22c55e;">
+                                $${firstMilestoneAmount.toLocaleString()}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 1rem;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+                            Set Delivery Timeline (Days):
+                        </label>
+                        <input type="number" 
+                               id="first-milestone-days"
+                               placeholder="Number of days" 
+                               min="1" 
+                               required 
+                               value="7"
+                               style="width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #ddd; border-radius: 4px;" />
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #666;">
+                            Supplier must complete this milestone within this timeframe
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background: #e3f2fd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <p style="margin: 0; font-size: 0.9rem; color: #1565c0;">
+                    ℹ️ <strong>Next Steps:</strong><br>
+                    1. You approve this first milestone<br>
+                    2. Supplier receives materials and completes milestone<br>
+                    3. Supplier uploads proof of completion<br>
+                    4. After verification, you can approve the next milestone
+                </p>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" onclick="submitFirstMilestoneApproval('${orderId}')" class="btn-success" style="flex: 1; padding: 1rem; font-size: 1rem;">
+                    ✓ Approve First Milestone
+                </button>
+                <button type="button" onclick="closeLenderApprovalModal()" style="flex: 1; padding: 1rem; font-size: 1rem;">
+                    Cancel
+                </button>
+            </div>
+            <div id="approval-error-${orderId}" class="error" style="margin-top: 0.5rem;"></div>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+function openNextMilestoneApprovalFlowModal(orderId) {
+    const order = currentOrders.find(o => o.id === orderId);
+    
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('lender-approval-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'lender-approval-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>Milestone Approval Status</h2>
+            
+            <div style="background: #f5f5f5; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <p><strong>Order:</strong> ${order.order_id}</p>
+                <p><strong>Status:</strong> First milestone approved - awaiting supplier completion</p>
+            </div>
+            
+            <div style="background: #e3f2fd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border-left: 4px solid #1976d2;">
+                <p style="margin: 0; font-weight: 600; color: #1565c0;">📋 Current Workflow:</p>
+                <ol style="margin: 0.5rem 0 0 0; padding-left: 1.5rem; color: #1565c0;">
+                    <li>✓ First milestone approved</li>
+                    <li>⏳ Supplier working on milestone...</li>
+                    <li>⏳ Awaiting supplier to upload proof</li>
+                    <li>⏳ Admin will verify proof</li>
+                    <li>➜ Then you can approve next milestone</li>
+                </ol>
+            </div>
+            
+            <div style="background: #fff3cd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <p style="margin: 0; font-weight: 600; color: #856404;">ℹ️ What happens next?</p>
+                <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem; font-size: 0.95rem; color: #856404;">
+                    <li>The supplier is now working on the first milestone</li>
+                    <li>They will upload proof documents when complete</li>
+                    <li>The admin will review and verify the proof</li>
+                    <li>Once verified, you will be able to approve the next milestone</li>
+                </ul>
+            </div>
+            
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" onclick="closeLenderApprovalModal()" style="flex: 1; padding: 1rem; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    Close
+                </button>
+                <button type="button" onclick="refreshOrders()" style="flex: 1; padding: 1rem; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
+                    Refresh Status
+                </button>
+            </div>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+async function submitFirstMilestoneApproval(orderId) {
+    const order = currentOrders.find(o => o.id === orderId);
+    if (!order) {
+        alert('Order not found');
+        return;
+    }
+    
+    const errorEl = document.getElementById(`approval-error-${orderId}`);
+    errorEl.textContent = '';
+    
+    const daysInput = document.getElementById('first-milestone-days');
+    const days = parseInt(daysInput.value);
+    
+    if (!days || days < 1) {
+        errorEl.textContent = 'Please enter a valid number of days (minimum 1)';
+        return;
+    }
+    
+    // Create milestone_timelines for first milestone only
+    const firstMilestone = order.milestones[0];
+    const milestone_timelines = [{
+        milestone_name: firstMilestone.name,
+        timeline_days: days
+    }];
+    
+    try {
+        const response = await fetch(`${API_BASE}/orders/${orderId}/lender-approve`, {
+            method: 'PATCH',
+            headers: { 
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ milestone_timelines })
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert(`First milestone approved successfully!\\n\\nMilestone: ${firstMilestone.name}\\nTimeline: ${days} days\\n\\nThe supplier can now begin work on this milestone.`);
+            closeLenderApprovalModal();
+            refreshOrders();
+        } else {
+            errorEl.textContent = data.message || 'Failed to approve milestone';
+        }
+    } catch (error) {
+        errorEl.textContent = 'Error approving milestone';
+        console.error(error);
+    }
+}
+
+function closeLenderApprovalModal() {
+    const modal = document.getElementById('lender-approval-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Admin Lock Funds Function
+async function lockFunds(orderId) {
+    if (!confirm('Lock funds for this order? This will create a LOCK transaction in the ledger.')) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/orders/${orderId}/lock-funds`, {
+            method: 'PATCH',
+            headers: { 
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+            const txnDate = new Date(data.transaction.createdAt).toLocaleDateString();
+            alert(`Funds locked successfully!\\n\\nTransaction Details:\\n- Type: ${data.transaction.type}\\n- Amount: $${data.transaction.amount.toLocaleString()}\\n- Date: ${txnDate}\\n\\nOrder is now active and supplier can begin work.`);
+            refreshOrders();
+        } else {
+            alert(data.message || 'Failed to lock funds');
+        }
+    } catch (error) {
+        alert('Error locking funds');
+        console.error(error);
     }
 }
 

@@ -245,6 +245,7 @@ exports.getAllOrders = async (req, res) => {
         status: order.status,
         funds_locked: order.funds_locked,
         lender_approval_status: order.lender_approval_status,
+        milestones: order.milestones || [],
         created_by: order.created_by,
         lender_id: order.lender_id,
         createdAt: order.createdAt,
@@ -422,6 +423,7 @@ exports.approveOrder = async (req, res) => {
 exports.lenderApproveOrder = async (req, res) => {
   try {
     const { id } = req.params;
+    const { milestone_timelines } = req.body;
     const lenderId = req.user.id;
 
     // DEBUG: Log role and request
@@ -429,6 +431,7 @@ exports.lenderApproveOrder = async (req, res) => {
     console.log('ROLE:', req.user.role);
     console.log('LENDER ID:', lenderId);
     console.log('ORDER ID:', id);
+    console.log('MILESTONE_TIMELINES:', milestone_timelines);
 
     // Validate order ID format
     if (!id || id.length !== 24) {
@@ -471,105 +474,165 @@ exports.lenderApproveOrder = async (req, res) => {
       });
     }
 
-    // Check if milestones already exist (prevent duplicates)
-    const existingMilestones = await Milestone.findOne({ order_id: order._id });
-    if (existingMilestones) {
-      console.log('ERROR: Milestones already exist');
-      return res.status(400).json({
-        success: false,
-        message: 'Milestones have already been created for this order'
-      });
-    }
-
-    console.log('Creating milestones from proposal...');
-
-    // Create milestone documents from supplier's proposal
-    const milestonesToCreate = [];
-    
-    if (order.milestones && Array.isArray(order.milestones)) {
-      order.milestones.forEach((milestone, index) => {
-        const amount = (order.value * milestone.percentage) / 100;
-        milestonesToCreate.push({
-          order_id: order._id,
-          name: milestone.name,
-          amount: amount,
-          percentage: milestone.percentage,
-          // First milestone is PENDING (supplier can start work)
-          // Rest are LOCKED (waiting for previous to complete)
-          status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
-          order: index + 1,
-          lender_id: lenderId
-        });
-      });
-    } else {
-      // Fallback: create default milestones if not provided
-      MILESTONE_TYPES.forEach((milestone, index) => {
-        const amount = (order.value * milestone.percentage) / 100;
-        milestonesToCreate.push({
-          order_id: order._id,
-          name: milestone.name,
-          amount: amount,
-          percentage: milestone.percentage,
-          status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
-          order: index + 1,
-          lender_id: lenderId
-        });
-      });
-    }
-
-    // Insert all milestones
-    await Milestone.insertMany(milestonesToCreate);
-    console.log('SUCCESS: Created', milestonesToCreate.length, 'milestones');
-
     // Update order status to LENDER_APPROVED
     order.status = ORDER_STATUS.LENDER_APPROVED;
     order.lender_approval_status = 'APPROVED';
     await order.save();
     console.log('SUCCESS: Order status updated to LENDER_APPROVED');
 
-    // Create notification for admin: LENDER_APPROVED_ORDER
-    await Notification.create({
-      user_id: null, // Admin notification (system-wide)
-      order_id: order._id,
-      type: 'LENDER_APPROVED_ORDER',
-      message: `Lender has approved order ${order.order_id}. Milestones created and ready for fund transfer.`,
-      read: false
-    });
+    // Process milestone-wise approval
+    if (milestone_timelines && Array.isArray(milestone_timelines) && milestone_timelines.length > 0) {
+      try {
+        const approvalDate = new Date();
+        const milestonesToCreate = [];
+        
+        // Count how many milestones already exist for this order
+        const existingMilestoneCount = await Milestone.countDocuments({ order_id: order._id });
+        console.log(`[lenderApproveOrder] Existing milestones for order ${order.order_id}:`, existingMilestoneCount);
 
-    // Create notification for supplier: LENDER_APPROVED_ORDER
-    await Notification.create({
-      user_id: order.created_by._id,
-      order_id: order._id,
-      type: 'LENDER_APPROVED_ORDER',
-      message: `Your order ${order.order_id} has been approved by the lender. Milestones are now active.`,
-      read: false
-    });
+        // Only create milestones for the ones in milestone_timelines
+        for (let i = 0; i < milestone_timelines.length; i++) {
+          const timelineItem = milestone_timelines[i];
+          console.log(`[lenderApproveOrder] Processing milestone ${i}: ${timelineItem.milestone_name}`);
+          
+          const orderMilestone = order.milestones.find(m => m.name === timelineItem.milestone_name);
+          
+          if (!orderMilestone) {
+            console.warn(`[lenderApproveOrder] Milestone ${timelineItem.milestone_name} not found in order`);
+            continue;
+          }
+          
+          const amount = (order.value * orderMilestone.percentage) / 100;
+          
+          let dueDate = null;
+          if (timelineItem.timeline_days) {
+            dueDate = new Date(approvalDate);
+            dueDate.setDate(dueDate.getDate() + timelineItem.timeline_days);
+          }
+          
+          // Calculate proper order number based on existing milestones
+          const milestoneOrder = existingMilestoneCount + i + 1;
 
-    res.status(200).json({
-      success: true,
-      message: 'Order approved by lender successfully. Milestones created.',
-      order: {
-        id: order._id,
-        order_id: order.order_id,
-        buyer_name: order.buyer_name,
-        value: order.value,
-        delivery_date: order.delivery_date,
-        status: order.status,
-        lender_approval_status: order.lender_approval_status,
-        milestones_created: milestonesToCreate.length,
-        created_by: order.created_by,
-        lender_id: order.lender_id,
-        createdAt: order.createdAt,
-        updatedAt: order.updatedAt
-      },
-      milestones: milestonesToCreate.map(m => ({
-        name: m.name,
-        amount: m.amount,
-        percentage: m.percentage,
-        status: m.status
-      }))
-    });
+          milestonesToCreate.push({
+            order_id: order._id,
+            name: orderMilestone.name,
+            amount: amount,
+            percentage: orderMilestone.percentage,
+            status: existingMilestoneCount === 0 && i === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
+            order: milestoneOrder,
+            due_date: dueDate,
+            timeline_days: timelineItem.timeline_days,
+            lender_id: lenderId
+          });
+        }
+
+        if (milestonesToCreate.length > 0) {
+          await Milestone.insertMany(milestonesToCreate);
+          console.log(`[lenderApproveOrder] Created ${milestonesToCreate.length} milestone(s) for order ${order.order_id}`);
+        }
+
+        // Create notification for admin: LENDER_APPROVED_ORDER
+        await Notification.create({
+          user_id: null, // Admin notification (system-wide)
+          order_id: order._id,
+          type: 'LENDER_APPROVED_ORDER',
+          message: `Lender has approved order ${order.order_id}. Milestones created and ready for fund transfer.`,
+          read: false
+        });
+
+        // Create notification for supplier: LENDER_APPROVED_ORDER
+        await Notification.create({
+          user_id: order.created_by._id,
+          order_id: order._id,
+          type: 'LENDER_APPROVED_ORDER',
+          message: `Your order ${order.order_id} has been approved by the lender. Milestones are now active.`,
+          read: false
+        });
+
+        res.status(200).json({
+          success: true,
+          message: 'Order approved by lender successfully. Milestone created.',
+          order: {
+            id: order._id,
+            order_id: order.order_id,
+            buyer_name: order.buyer_name,
+            value: order.value,
+            delivery_date: order.delivery_date,
+            status: order.status,
+            lender_approval_status: order.lender_approval_status,
+            milestones_created: milestonesToCreate.length,
+            created_by: order.created_by,
+            lender_id: order.lender_id,
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt
+          },
+          milestones: milestonesToCreate.map(m => ({
+            name: m.name,
+            amount: m.amount,
+            percentage: m.percentage,
+            status: m.status
+          }))
+        });
+      } catch (milestoneError) {
+        console.error(`[lenderApproveOrder] Error creating milestones:`, milestoneError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Error creating milestones',
+          error: milestoneError.message
+        });
+      }
+    } else {
+      // No milestone_timelines provided - old behavior
+      console.log('No milestone_timelines provided, creating all milestones (legacy behavior)');
+      
+      const milestonesToCreate = [];
+      if (order.milestones && Array.isArray(order.milestones)) {
+        order.milestones.forEach((milestone, index) => {
+          const amount = (order.value * milestone.percentage) / 100;
+          milestonesToCreate.push({
+            order_id: order._id,
+            name: milestone.name,
+            amount: amount,
+            percentage: milestone.percentage,
+            status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
+            order: index + 1,
+            lender_id: lenderId
+          });
+        });
+      }
+
+      if (milestonesToCreate.length > 0) {
+        await Milestone.insertMany(milestonesToCreate);
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Order approved by lender successfully. All milestones created.',
+        order: {
+          id: order._id,
+          order_id: order.order_id,
+          buyer_name: order.buyer_name,
+          value: order.value,
+          delivery_date: order.delivery_date,
+          status: order.status,
+          lender_approval_status: order.lender_approval_status,
+          milestones_created: milestonesToCreate.length,
+          created_by: order.created_by,
+          lender_id: order.lender_id,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt
+        },
+        milestones: milestonesToCreate.map(m => ({
+          name: m.name,
+          amount: m.amount,
+          percentage: m.percentage,
+          status: m.status
+        }))
+      });
+    }
   } catch (error) {
+    console.error('[lenderApproveOrder] ERROR:', error.message);
+    console.error('[lenderApproveOrder] Stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Error approving order',
