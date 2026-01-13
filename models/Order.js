@@ -45,6 +45,21 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    // Lender approval tracking
+    lender_approval_status: {
+      type: String,
+      enum: ['PENDING', 'APPROVED', 'REJECTED'],
+      default: 'PENDING'
+    },
+    lender_approval_date: {
+      type: Date,
+      default: null
+    },
+    lender_rejection_reason: {
+      type: String,
+      default: null,
+      trim: true
+    },
     // Reference to the supplier who created the order
     created_by: {
       type: mongoose.Schema.Types.ObjectId,

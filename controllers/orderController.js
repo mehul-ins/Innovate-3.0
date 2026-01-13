@@ -99,8 +99,8 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Create order with PENDING_VERIFICATION status
-    // Note: status defaults to PENDING_VERIFICATION in the model
+    // Create order with PENDING_LENDER_APPROVAL status
+    // Order now goes to lender for approval before admin verification
     const order = await Order.create({
       order_id,
       buyer_name,
@@ -109,7 +109,8 @@ exports.createOrder = async (req, res) => {
       milestones: processedMilestones,
       created_by: req.user.id, // Set from authenticated user
       lender_id: lender_id,
-      status: ORDER_STATUS.PENDING_VERIFICATION,
+      status: ORDER_STATUS.PENDING_LENDER_APPROVAL,
+      lender_approval_status: 'PENDING',
       funds_locked: false
     });
 

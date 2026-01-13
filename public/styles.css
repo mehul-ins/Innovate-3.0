@@ -120,6 +120,15 @@ button:hover {
     background: #229954;
 }
 
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
 button[type="button"] {
     background: #95a5a6;
 }

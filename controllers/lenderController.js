@@ -1,7 +1,9 @@
 const User = require('../models/User');
 const Order = require('../models/Order');
+const Milestone = require('../models/Milestone');
+const Transaction = require('../models/Transaction');
 const Notification = require('../models/Notification');
-const { ROLES, ORDER_STATUS } = require('../config/constants');
+const { ROLES, ORDER_STATUS, TRANSACTION_TYPE, MILESTONE_STATUS } = require('../config/constants');
 
 /**
  * Lender Controller
@@ -60,10 +62,10 @@ exports.getPendingRequests = async (req, res) => {
       })
       .sort({ createdAt: -1 });
 
-    // Get orders that are PENDING_VERIFICATION and assigned to this lender
+    // Get orders that are PENDING_LENDER_APPROVAL and assigned to this lender
     const orders = await Order.find({
       lender_id: lenderId,
-      status: ORDER_STATUS.PENDING_VERIFICATION
+      status: ORDER_STATUS.PENDING_LENDER_APPROVAL
     })
       .populate('created_by', 'name email')
       .sort({ createdAt: -1 });
@@ -94,6 +96,230 @@ exports.getPendingRequests = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching pending requests',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get order details for lender approval
+// @route   GET /api/lenders/orders/:id
+// @access  Private (LENDER only)
+exports.getOrderForApproval = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lenderId = req.user.id;
+
+    const order = await Order.findById(id)
+      .populate('created_by', 'name email')
+      .populate('lender_id', 'name email');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Verify this order belongs to the logged-in lender
+    if (order.lender_id._id.toString() !== lenderId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view this order'
+      });
+    }
+
+    // Verify order is pending lender approval
+    if (order.status !== ORDER_STATUS.PENDING_LENDER_APPROVAL) {
+      return res.status(400).json({
+        success: false,
+        message: `Order is not pending lender approval. Current status: ${order.status}`
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      order: {
+        id: order._id,
+        order_id: order.order_id,
+        buyer_name: order.buyer_name,
+        value: order.value,
+        delivery_date: order.delivery_date,
+        status: order.status,
+        lender_approval_status: order.lender_approval_status,
+        milestones: order.milestones,
+        supplier: order.created_by,
+        createdAt: order.createdAt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching order details',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Approve funding request
+// @route   POST /api/lenders/orders/:id/approve
+// @access  Private (LENDER only)
+exports.approveFunding = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { milestone_timelines } = req.body;
+    const lenderId = req.user.id;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    if (order.lender_id.toString() !== lenderId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to approve this order'
+      });
+    }
+
+    if (order.status !== ORDER_STATUS.PENDING_LENDER_APPROVAL) {
+      return res.status(400).json({
+        success: false,
+        message: `Order cannot be approved. Current status: ${order.status}`
+      });
+    }
+
+    order.status = ORDER_STATUS.LENDER_APPROVED;
+    order.lender_approval_status = 'APPROVED';
+    order.lender_approval_date = new Date();
+    order.funds_locked = true;
+    await order.save();
+
+    if (milestone_timelines && Array.isArray(milestone_timelines)) {
+      const milestones = [];
+      const approvalDate = new Date();
+
+      order.milestones.forEach((milestone, index) => {
+        const timeline = milestone_timelines.find(t => t.milestone_name === milestone.name);
+        const amount = (order.value * milestone.percentage) / 100;
+        
+        let dueDate = null;
+        if (timeline && timeline.timeline_days) {
+          dueDate = new Date(approvalDate);
+          dueDate.setDate(dueDate.getDate() + timeline.timeline_days);
+        }
+
+        milestones.push({
+          order_id: order._id,
+          name: milestone.name,
+          amount: amount,
+          percentage: milestone.percentage,
+          status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
+          order: index + 1,
+          due_date: dueDate,
+          timeline_days: timeline ? timeline.timeline_days : null
+        });
+      });
+
+      await Milestone.insertMany(milestones);
+    }
+
+    await Transaction.create({
+      order_id: order._id,
+      milestone_id: null,
+      type: TRANSACTION_TYPE.LOCK,
+      amount: order.value,
+      description: `Order ${order.order_id} approved by lender. Funds locked in escrow. Total: $${order.value}`,
+      status: 'RECORDED'
+    });
+
+    await Notification.updateMany(
+      { order_id: order._id, user_id: lenderId, type: 'FUNDING_REQUEST' },
+      { read: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Funding approved successfully. Funds locked.',
+      order: {
+        id: order._id,
+        order_id: order.order_id,
+        status: order.status,
+        lender_approval_status: order.lender_approval_status,
+        funds_locked: order.funds_locked,
+        lender_approval_date: order.lender_approval_date
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error approving funding',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Reject funding request
+// @route   POST /api/lenders/orders/:id/reject
+// @access  Private (LENDER only)
+exports.rejectFunding = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejection_reason } = req.body;
+    const lenderId = req.user.id;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    if (order.lender_id.toString() !== lenderId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to reject this order'
+      });
+    }
+
+    if (order.status !== ORDER_STATUS.PENDING_LENDER_APPROVAL) {
+      return res.status(400).json({
+        success: false,
+        message: `Order cannot be rejected. Current status: ${order.status}`
+      });
+    }
+
+    order.status = ORDER_STATUS.LENDER_REJECTED;
+    order.lender_approval_status = 'REJECTED';
+    order.lender_approval_date = new Date();
+    order.lender_rejection_reason = rejection_reason || null;
+    await order.save();
+
+    await Notification.updateMany(
+      { order_id: order._id, user_id: lenderId, type: 'FUNDING_REQUEST' },
+      { read: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Funding request rejected',
+      order: {
+        id: order._id,
+        order_id: order.order_id,
+        status: order.status,
+        lender_approval_status: order.lender_approval_status,
+        lender_rejection_reason: order.lender_rejection_reason
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error rejecting funding',
       error: error.message
     });
   }

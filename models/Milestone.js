@@ -62,6 +62,18 @@ const milestoneSchema = new mongoose.Schema(
       type: Number,
       required: true,
       description: 'Sequence order of milestone (1, 2, 3)'
+    },
+    // Lender-defined timeline for milestone completion
+    due_date: {
+      type: Date,
+      default: null,
+      description: 'Lender-defined deadline for milestone completion'
+    },
+    timeline_days: {
+      type: Number,
+      default: null,
+      min: [1, 'Timeline must be at least 1 day'],
+      description: 'Number of days from order approval to milestone due date'
     }
   },
   {

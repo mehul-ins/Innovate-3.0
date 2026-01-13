@@ -5,6 +5,44 @@
   </div>
 </div>
 
+<!-- Approval Modal -->
+<div id="lender-approval-modal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 600px;">
+    <h2>Approve Funding Request</h2>
+    <div id="approval-order-details"></div>
+    <form id="lender-approval-form">
+      <div class="form-group">
+        <label><strong>Set Milestone Timelines (days from approval):</strong></label>
+        <div id="milestone-timelines"></div>
+      </div>
+      <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+        <button type="submit" class="btn-success" style="flex: 1;">✓ Approve & Lock Funds</button>
+        <button type="button" onclick="closeApprovalModal()" style="flex: 1;">Cancel</button>
+      </div>
+      <div id="approval-error" class="error" style="margin-top: 0.5rem;"></div>
+    </form>
+  </div>
+</div>
+
+<!-- Rejection Modal -->
+<div id="lender-rejection-modal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 500px;">
+    <h2>Reject Funding Request</h2>
+    <div id="rejection-order-details"></div>
+    <form id="lender-rejection-form">
+      <div class="form-group">
+        <label>Rejection Reason (optional):</label>
+        <textarea id="rejection-reason" rows="3" placeholder="Explain why this funding request is being rejected..."></textarea>
+      </div>
+      <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+        <button type="submit" class="btn-danger" style="flex: 1;">✗ Reject Request</button>
+        <button type="button" onclick="closeRejectionModal()" style="flex: 1;">Cancel</button>
+      </div>
+      <div id="rejection-error" class="error" style="margin-top: 0.5rem;"></div>
+    </form>
+  </div>
+</div>
+
 <script>
   (function () {
     const API_BASE = '/api';
@@ -26,7 +64,7 @@
           <div class="order-card" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
               <h3 style="margin: 0;">Order: ${order.order_id}</h3>
-              <span class="status-badge status-${order.status.toLowerCase()}" style="padding: 0.25rem 0.5rem; background: #f0f0f0; border-radius: 3px;">${order.status}</span>
+              <span class="status-badge status-${order.status.toLowerCase().replace(/_/g, '-')}" style="padding: 0.25rem 0.5rem; background: #fff3cd; border-radius: 3px; color: #856404;">${order.status.replace(/_/g, ' ')}</span>
             </div>
             <div style="margin-bottom: 0.5rem;">
               <p><strong>Buyer:</strong> ${order.buyer_name}</p>
@@ -37,11 +75,15 @@
             <div style="margin-top: 0.75rem;">
               <p><strong>Milestone Breakdown:</strong></p>
               <ul style="margin-left: 1.5rem; margin-top: 0.25rem;">
-                ${order.milestones.map(m => `<li>${m.name}: ${m.percentage}%</li>`).join('')}
+                ${order.milestones.map(m => `<li>${m.name}: ${m.percentage}% ($${((order.value * m.percentage) / 100).toLocaleString()})</li>`).join('')}
               </ul>
             </div>
             <div style="margin-top: 0.75rem; font-size: 0.85rem; color: #666;">
               <p>Requested on: ${new Date(order.createdAt).toLocaleString()}</p>
+            </div>
+            <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+              <button onclick="openApprovalModal('${order.id}')" class="btn-success" style="flex: 1; padding: 0.5rem;">✓ Approve</button>
+              <button onclick="openRejectionModal('${order.id}')" class="btn-danger" style="flex: 1; padding: 0.5rem;">✗ Reject</button>
             </div>
           </div>
         `).join('')}
@@ -77,8 +119,225 @@
       }
     }
 
+    let currentOrderId = null;
+
+    async function openApprovalModal(orderId) {
+      currentOrderId = orderId;
+      const modal = document.getElementById('lender-approval-modal');
+      const detailsEl = document.getElementById('approval-order-details');
+      const timelinesEl = document.getElementById('milestone-timelines');
+      const errorEl = document.getElementById('approval-error');
+      
+      errorEl.textContent = '';
+      modal.style.display = 'flex';
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        errorEl.textContent = 'Please login first.';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/lenders/orders/${orderId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (res.ok && data.order) {
+          const order = data.order;
+          detailsEl.innerHTML = `
+            <div style="margin-bottom: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+              <p><strong>Order ID:</strong> ${order.order_id}</p>
+              <p><strong>Buyer:</strong> ${order.buyer_name}</p>
+              <p><strong>Order Value:</strong> $${order.value.toLocaleString()}</p>
+              <p><strong>Supplier:</strong> ${order.supplier?.name || 'N/A'} (${order.supplier?.email || 'N/A'})</p>
+            </div>
+          `;
+
+          timelinesEl.innerHTML = order.milestones.map((m, idx) => `
+            <div style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+              <label style="flex: 1; min-width: 150px;">${m.name} (${m.percentage}%):</label>
+              <input type="number" 
+                     class="timeline-input" 
+                     data-milestone-name="${m.name}"
+                     placeholder="Days" 
+                     min="1" 
+                     required 
+                     style="width: 100px; padding: 0.25rem;">
+              <span style="color: #666; font-size: 0.9rem;">days</span>
+            </div>
+          `).join('');
+        } else {
+          errorEl.textContent = data.message || 'Error loading order details.';
+        }
+      } catch (err) {
+        console.error('Error loading order:', err);
+        errorEl.textContent = 'Error connecting to server.';
+      }
+    }
+
+    function closeApprovalModal() {
+      document.getElementById('lender-approval-modal').style.display = 'none';
+      currentOrderId = null;
+    }
+
+    async function openRejectionModal(orderId) {
+      currentOrderId = orderId;
+      const modal = document.getElementById('lender-rejection-modal');
+      const detailsEl = document.getElementById('rejection-order-details');
+      const errorEl = document.getElementById('rejection-error');
+      
+      errorEl.textContent = '';
+      modal.style.display = 'flex';
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        errorEl.textContent = 'Please login first.';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/lenders/orders/${orderId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (res.ok && data.order) {
+          const order = data.order;
+          detailsEl.innerHTML = `
+            <div style="margin-bottom: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+              <p><strong>Order ID:</strong> ${order.order_id}</p>
+              <p><strong>Buyer:</strong> ${order.buyer_name}</p>
+              <p><strong>Order Value:</strong> $${order.value.toLocaleString()}</p>
+              <p><strong>Supplier:</strong> ${order.supplier?.name || 'N/A'} (${order.supplier?.email || 'N/A'})</p>
+            </div>
+          `;
+        } else {
+          errorEl.textContent = data.message || 'Error loading order details.';
+        }
+      } catch (err) {
+        console.error('Error loading order:', err);
+        errorEl.textContent = 'Error connecting to server.';
+      }
+    }
+
+    function closeRejectionModal() {
+      document.getElementById('lender-rejection-modal').style.display = 'none';
+      document.getElementById('rejection-reason').value = '';
+      currentOrderId = null;
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
       loadPendingRequests();
+
+      // Approval form handler
+      const approvalForm = document.getElementById('lender-approval-form');
+      if (approvalForm) {
+        approvalForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const errorEl = document.getElementById('approval-error');
+          errorEl.textContent = '';
+
+          const timelineInputs = document.querySelectorAll('.timeline-input');
+          const milestone_timelines = Array.from(timelineInputs).map(input => ({
+            milestone_name: input.dataset.milestoneName,
+            timeline_days: parseInt(input.value)
+          })).filter(t => t.timeline_days > 0);
+
+          if (milestone_timelines.length === 0) {
+            errorEl.textContent = 'Please set timelines for at least one milestone.';
+            return;
+          }
+
+          const token = localStorage.getItem('authToken');
+          if (!token) {
+            errorEl.textContent = 'Please login first.';
+            return;
+          }
+
+          try {
+            const res = await fetch(`${API_BASE}/lenders/orders/${currentOrderId}/approve`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ milestone_timelines })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+              alert('Funding approved successfully! Funds locked.');
+              closeApprovalModal();
+              loadPendingRequests(); // Refresh list
+            } else {
+              errorEl.textContent = data.message || 'Failed to approve funding.';
+            }
+          } catch (err) {
+            console.error('Error approving funding:', err);
+            errorEl.textContent = 'Error connecting to server.';
+          }
+        });
+      }
+
+      // Rejection form handler
+      const rejectionForm = document.getElementById('lender-rejection-form');
+      if (rejectionForm) {
+        rejectionForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const errorEl = document.getElementById('rejection-error');
+          errorEl.textContent = '';
+
+          const rejection_reason = document.getElementById('rejection-reason').value.trim();
+
+          const token = localStorage.getItem('authToken');
+          if (!token) {
+            errorEl.textContent = 'Please login first.';
+            return;
+          }
+
+          try {
+            const res = await fetch(`${API_BASE}/lenders/orders/${currentOrderId}/reject`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ rejection_reason: rejection_reason || null })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+              alert('Funding request rejected.');
+              closeRejectionModal();
+              loadPendingRequests(); // Refresh list
+            } else {
+              errorEl.textContent = data.message || 'Failed to reject funding.';
+            }
+          } catch (err) {
+            console.error('Error rejecting funding:', err);
+            errorEl.textContent = 'Error connecting to server.';
+          }
+        });
+      }
+
+      // Close modals when clicking outside
+      window.onclick = function(event) {
+        const approvalModal = document.getElementById('lender-approval-modal');
+        const rejectionModal = document.getElementById('lender-rejection-modal');
+        if (event.target === approvalModal) {
+          closeApprovalModal();
+        }
+        if (event.target === rejectionModal) {
+          closeRejectionModal();
+        }
+      };
     });
+
+    // Expose functions globally for onclick handlers
+    window.openApprovalModal = openApprovalModal;
+    window.openRejectionModal = openRejectionModal;
+    window.closeApprovalModal = closeApprovalModal;
+    window.closeRejectionModal = closeRejectionModal;
   })();
 </script>
