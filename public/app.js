@@ -497,8 +497,8 @@ function renderMilestoneRows() {
         const row = document.createElement('div');
         row.className = 'milestone-row';
         row.innerHTML = `
-            <input type="text" class="milestone-name" placeholder="Milestone name" value="${milestone.name || ''}" required style="width: 40%"> 
-            <input type="number" class="milestone-amount" placeholder="Amount" value="${milestone.amount || ''}" min="1" required style="width: 30%"> 
+            <input type="text" class="milestone-name" placeholder="Milestone name" value="${milestone.name || ''}" required> 
+            <input type="number" class="milestone-amount" placeholder="Amount" value="${milestone.amount || ''}" min="1" required> 
             <button type="button" class="remove-milestone-btn" data-idx="${idx}">Remove</button>
         `;
         row.querySelector('.remove-milestone-btn').onclick = function() {

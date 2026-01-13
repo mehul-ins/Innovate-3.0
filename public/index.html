@@ -125,8 +125,10 @@
                             <div id="milestone-list"></div>
                             <button type="button" id="add-milestone-btn">+ Add Milestone</button>
                         </div>
-                        <button type="submit">Create Order</button>
-                        <button type="button" onclick="closeModal('create-order-modal')">Cancel</button>
+                        <div class="modal-actions">
+                            <button type="submit">Create Order</button>
+                            <button type="button" onclick="closeModal('create-order-modal')">Cancel</button>
+                        </div>
                     </form>
                     <div id="create-order-error" class="error"></div>
                 </div>
@@ -142,8 +144,10 @@
                             <label>Proof of Completion:</label>
                             <textarea id="milestone-proof" required rows="4"></textarea>
                         </div>
-                        <button type="submit">Complete Milestone</button>
-                        <button type="button" onclick="closeModal('complete-milestone-modal')">Cancel</button>
+                        <div class="modal-actions">
+                            <button type="submit">Complete Milestone</button>
+                            <button type="button" onclick="closeModal('complete-milestone-modal')">Cancel</button>
+                        </div>
                     </form>
                     <div id="complete-milestone-error" class="error"></div>
                 </div>

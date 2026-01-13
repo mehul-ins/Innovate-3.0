@@ -213,6 +213,122 @@ body {
     resize: vertical;
 }
 
+/* Milestone Rows */
+#milestone-list {
+    margin-bottom: 16px;
+}
+
+.milestone-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.milestone-row input {
+    flex: 1;
+    min-width: 120px;
+    padding: 12px 14px;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #1a1a1a;
+    color: #e8e8e8;
+    font-family: 'Poppins', sans-serif;
+    transition: all 0.3s ease;
+}
+
+.milestone-row input:focus {
+    outline: none;
+    border-color: rgba(255, 138, 51, 0.6);
+    background: #202020;
+    box-shadow: 0 0 0 3px rgba(255, 138, 51, 0.1);
+}
+
+.milestone-row .milestone-name {
+    flex: 2;
+}
+
+.milestone-row .milestone-amount {
+    flex: 1;
+}
+
+.remove-milestone-btn {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%) !important;
+    padding: 12px 20px !important;
+    font-size: 13px !important;
+    white-space: nowrap;
+    margin: 0 !important;
+    flex-shrink: 0;
+}
+
+.remove-milestone-btn:hover {
+    background: linear-gradient(135deg, #ed5e50 0%, #e74c3c 100%) !important;
+}
+
+#add-milestone-btn {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%) !important;
+    width: 100%;
+    padding: 14px 24px !important;
+    font-size: 14px !important;
+    margin: 0 0 20px 0 !important;
+}
+
+#add-milestone-btn:hover {
+    background: linear-gradient(135deg, #5dade2 0%, #3498db 100%) !important;
+}
+
+/* Button Container for Modal Actions */
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+}
+
+.modal-actions button {
+    flex: 1;
+    min-width: 140px;
+    margin: 0 !important;
+}
+
+.modal-actions button[type="submit"] {
+    order: 1;
+}
+
+.modal-actions button[type="button"] {
+    order: 2;
+    background: linear-gradient(135deg, #545454 0%, #3a3a3a 100%) !important;
+}
+
+.modal-actions button[type="button"]:hover {
+    background: linear-gradient(135deg, #6b6b6b 0%, #545454 100%) !important;
+}
+
+/* Responsive Milestone Rows */
+@media (max-width: 768px) {
+    .milestone-row {
+        flex-direction: column;
+    }
+    
+    .milestone-row input {
+        width: 100%;
+    }
+    
+    .remove-milestone-btn {
+        width: 100%;
+    }
+    
+    .modal-actions {
+        flex-direction: column;
+    }
+    
+    .modal-actions button {
+        width: 100%;
+    }
+}
+
 /* Buttons */
 
 button {
