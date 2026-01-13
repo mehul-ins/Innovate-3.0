@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { createOrder, getAllOrders, approveOrder, repayOrder } = require('../controllers/orderController');
+const { getOrderMilestones } = require('../controllers/milestoneController');
 const { protect, supplierOnly, adminOnly } = require('../middleware/auth');
 
 /**
@@ -20,9 +21,9 @@ const { protect, supplierOnly, adminOnly } = require('../middleware/auth');
 // When a supplier creates an order, it starts with PENDING_VERIFICATION status
 router.post('/', protect, supplierOnly, createOrder);
 
-// Get all orders - ADMIN only
-// Admin can view all orders to prepare for approval
-router.get('/', protect, adminOnly, getAllOrders);
+// Get all orders - All authenticated users can view
+// Phase 8: Frontend dashboard allows all roles to view orders
+router.get('/', protect, getAllOrders);
 
 // Approve order - ADMIN only
 // Changes status from PENDING_VERIFICATION to APPROVED
@@ -33,5 +34,9 @@ router.patch('/:id/approve', protect, adminOnly, approveOrder);
 // Changes status from COMPLETED to CLOSED
 // Marks loan as repaid and prevents further actions
 router.patch('/:id/repay', protect, adminOnly, repayOrder);
+
+// Get milestones for order - nested route (Phase 8 - Frontend support)
+// GET /api/orders/:id/milestones
+router.get('/:orderId/milestones', protect, getOrderMilestones);
 
 module.exports = router;

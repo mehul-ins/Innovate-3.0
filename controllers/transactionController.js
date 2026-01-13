@@ -43,7 +43,11 @@ exports.getOrderTransactions = async (req, res) => {
         message: 'No transactions found for this order.',
         order_id: orderId,
         transactions: [],
-        escrow_balance: 0
+        summary: {
+          total_locked: 0,
+          total_released: 0,
+          escrow_balance: 0
+        }
       });
     }
 
@@ -81,12 +85,10 @@ exports.getOrderTransactions = async (req, res) => {
         status: tx.status,
         createdAt: tx.createdAt
       })),
-      escrow_ledger: {
+      summary: {
         total_locked: lockedAmount,
         total_released: releasedAmount,
-        current_balance: escrowBalance,
-        transactions_count: transactions.length,
-        note: 'Mock escrow - no real payments made. All amounts tracked for audit.'
+        escrow_balance: escrowBalance
       }
     });
   } catch (error) {
