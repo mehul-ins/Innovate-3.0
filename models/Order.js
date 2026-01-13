@@ -52,18 +52,13 @@ const orderSchema = new mongoose.Schema(
       required: true
     },
     // Supplier-defined milestone breakdown (dynamic milestones)
-    // Structure: [{ name: string, amount: number, percentage: number }, ...]
-    // Amounts must sum to 100% of order value; percentages are derived and validated
+    // Structure: [{ name: string, percentage: number }, ...]
+    // Percentages are validated against platform rules
     milestones: [
       {
         name: {
           type: String,
           required: [true, 'Milestone name is required']
-        },
-        amount: {
-          type: Number,
-          required: [true, 'Milestone amount is required'],
-          min: [0, 'Amount must be positive']
         },
         percentage: {
           type: Number,
@@ -133,11 +128,11 @@ Order.validateMilestones = function(milestones) {
     }
   }
 
-  // Validate total percentage must be exactly 100% (strict risk control)
-  if (totalPercentage !== 100) {
+  // Validate total percentage does not exceed 100%
+  if (totalPercentage > 100) {
     return {
       isValid: false,
-      error: `Total milestone percentage must be exactly 100%. Current total: ${totalPercentage}%`
+      error: `Total milestone percentage cannot exceed 100%. Current total: ${totalPercentage}%`
     };
   }
 

@@ -9,24 +9,37 @@ let selectedMilestone = null;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if user is already logged in
+    // Check if user is already logged in (SPA dashboard only)
     const savedToken = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('currentUser');
     
-    if (savedToken && savedUser) {
+    if (savedToken && savedUser && document.getElementById('dashboard-section')) {
         authToken = savedToken;
         currentUser = JSON.parse(savedUser);
         showDashboard();
     }
 
-    // Setup form handlers
-    document.getElementById('login-form').addEventListener('submit', handleLogin);
-    document.getElementById('create-order-form').addEventListener('submit', handleCreateOrder);
-    document.getElementById('complete-milestone-form').addEventListener('submit', handleCompleteMilestone);
+    // Setup form handlers (guard against missing elements when using EJS views)
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
 
-    // Milestone UI logic
-    document.getElementById('add-milestone-btn').addEventListener('click', addMilestoneRow);
-    renderMilestoneRows();
+    const createOrderForm = document.getElementById('create-order-form');
+    if (createOrderForm) {
+        createOrderForm.addEventListener('submit', handleCreateOrder);
+    }
+
+    const completeMilestoneForm = document.getElementById('complete-milestone-form');
+    if (completeMilestoneForm) {
+        completeMilestoneForm.addEventListener('submit', handleCompleteMilestone);
+    }
+
+    const addMilestoneBtn = document.getElementById('add-milestone-btn');
+    if (addMilestoneBtn) {
+        addMilestoneBtn.addEventListener('click', addMilestoneRow);
+        renderMilestoneRows();
+    }
 });
 
 // Authentication

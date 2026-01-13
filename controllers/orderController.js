@@ -46,68 +46,15 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Validate milestone structure based on amounts and compute percentages
-    let totalAmount = 0;
-    const processedMilestones = [];
+    // Ensure milestones is an array
+    const milestonesArray = Array.isArray(milestones) ? milestones : [];
 
-    for (const m of milestones) {
-      if (!m.name || typeof m.name !== 'string' || m.name.trim() === '') {
-        return res.status(400).json({
-          success: false,
-          message: 'Each milestone must have a non-empty name.',
-          field: 'milestones'
-        });
-      }
+    // Validate milestone structure and percentages (name + percentage)
+    const processedMilestones = milestonesArray.map((m) => ({
+      name: m.name,
+      percentage: Number(m.percentage)
+    }));
 
-      const amount = Number(m.amount);
-      if (Number.isNaN(amount) || amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Milestone "${m.name}" has invalid amount. Must be a positive number.`,
-          field: 'milestones'
-        });
-      }
-
-      totalAmount += amount;
-      const percentage = Number(((amount / numericValue) * 100).toFixed(2));
-
-      processedMilestones.push({
-        name: m.name,
-        amount,
-        percentage
-      });
-    }
-
-    // Ensure minimum number of milestones (at least 3)
-    if (processedMilestones.length < 3) {
-      return res.status(400).json({
-        success: false,
-        message: 'At least three milestones are required.',
-        field: 'milestones'
-      });
-    }
-
-    // Ensure first milestone does not exceed 40% of order value
-    const firstMilestone = processedMilestones[0];
-    const firstMilestoneMax = numericValue * 0.4;
-    if (firstMilestone.amount > firstMilestoneMax) {
-      return res.status(400).json({
-        success: false,
-        message: `The first milestone amount (${firstMilestone.amount}) cannot exceed 40% of the order value (${firstMilestoneMax}).`,
-        field: 'milestones'
-      });
-    }
-
-    // Ensure total milestone amount matches order value
-    if (totalAmount !== numericValue) {
-      return res.status(400).json({
-        success: false,
-        message: `Sum of milestone amounts (${totalAmount}) must equal order value (${numericValue}).`,
-        field: 'milestones'
-      });
-    }
-
-    // Validate derived percentages (raw material cap, total must be 100%, etc.)
     const milestonesValidation = Order.validateMilestones(processedMilestones);
     if (!milestonesValidation.isValid) {
       return res.status(400).json({
@@ -161,7 +108,6 @@ exports.createOrder = async (req, res) => {
         funds_locked: order.funds_locked,
         milestones: order.milestones.map(m => ({
           name: m.name,
-          amount: m.amount,
           percentage: m.percentage
         })),
         total_milestone_percentage: milestonesValidation.totalPercentage,

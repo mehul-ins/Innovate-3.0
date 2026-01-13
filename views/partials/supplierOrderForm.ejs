@@ -1,0 +1,179 @@
+<div class="panel">
+  <h2>Create New Order</h2>
+  <form id="supplier-order-form">
+    <div class="form-group">
+      <label>Order ID:</label>
+      <input type="text" id="order-id" required />
+    </div>
+    <div class="form-group">
+      <label>Buyer Name:</label>
+      <input type="text" id="buyer-name" required />
+    </div>
+    <div class="form-group">
+      <label>Total Order Value ($):</label>
+      <input type="number" id="order-value" min="1" required />
+    </div>
+    <div class="form-group">
+      <label>Delivery Date:</label>
+      <input type="date" id="delivery-date" required />
+    </div>
+
+    <div class="form-group">
+      <label>Milestone Breakdown:</label>
+      <div id="milestone-list"></div>
+      <button type="button" id="add-milestone-row-btn">+ Add Milestone</button>
+      <p style="margin-top: 0.5rem; font-size: 0.9rem;">
+        Total percentage: <span id="total-percentage">0</span>%
+      </p>
+    </div>
+
+    <button type="submit">Submit Order</button>
+    <div id="supplier-order-error" class="error" style="margin-top: 0.5rem;"></div>
+    <div id="supplier-order-success" class="success" style="margin-top: 0.5rem;"></div>
+  </form>
+</div>
+
+<script>
+  (function () {
+    const API_BASE = '/api';
+
+    function renderMilestoneRows(state) {
+      const list = document.getElementById('milestone-list');
+      if (!list) return;
+      list.innerHTML = '';
+
+      state.forEach((m, idx) => {
+        const row = document.createElement('div');
+        row.className = 'milestone-row';
+        row.style.marginBottom = '0.5rem';
+        row.innerHTML = `
+          <input type="text" class="milestone-name" placeholder="Milestone name" value="${m.name || ''}" required style="width: 45%"> 
+          <input type="number" class="milestone-percentage" placeholder="%" value="${m.percentage || ''}" min="1" max="100" required style="width: 20%"> %
+          <button type="button" class="remove-milestone-btn" data-idx="${idx}">Remove</button>
+        `;
+        row.querySelector('.remove-milestone-btn').onclick = function () {
+          state.splice(idx, 1);
+          if (state.length === 0) {
+            state.push({ name: '', percentage: '' });
+          }
+          renderMilestoneRows(state);
+          updateTotalPercentage(state);
+        };
+        list.appendChild(row);
+      });
+
+      // Attach change listeners to recalc total
+      list.querySelectorAll('.milestone-percentage').forEach((input, idx) => {
+        input.addEventListener('input', () => {
+          const val = parseFloat(input.value);
+          state[idx].percentage = isNaN(val) ? '' : val;
+          updateTotalPercentage(state);
+        });
+      });
+
+      list.querySelectorAll('.milestone-name').forEach((input, idx) => {
+        input.addEventListener('input', () => {
+          state[idx].name = input.value;
+        });
+      });
+
+      updateTotalPercentage(state);
+    }
+
+    function updateTotalPercentage(state) {
+      const totalEl = document.getElementById('total-percentage');
+      if (!totalEl) return;
+      const total = state.reduce((sum, m) => sum + (parseFloat(m.percentage) || 0), 0);
+      totalEl.textContent = total.toFixed(2);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const form = document.getElementById('supplier-order-form');
+      if (!form) return; // Only run on supplier dashboard
+
+      const errorEl = document.getElementById('supplier-order-error');
+      const successEl = document.getElementById('supplier-order-success');
+      const addRowBtn = document.getElementById('add-milestone-row-btn');
+
+      const milestoneState = [{ name: '', percentage: '' }];
+      renderMilestoneRows(milestoneState);
+
+      addRowBtn.addEventListener('click', function () {
+        milestoneState.push({ name: '', percentage: '' });
+        renderMilestoneRows(milestoneState);
+      });
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        errorEl.textContent = '';
+        successEl.textContent = '';
+
+        const order_id = document.getElementById('order-id').value.trim();
+        const buyer_name = document.getElementById('buyer-name').value.trim();
+        const value = parseFloat(document.getElementById('order-value').value);
+        const delivery_date = document.getElementById('delivery-date').value;
+
+        const milestones = milestoneState
+          .map(m => ({
+            name: (m.name || '').trim(),
+            percentage: parseFloat(m.percentage)
+          }))
+          .filter(m => m.name && !isNaN(m.percentage));
+
+        if (milestones.length === 0) {
+          errorEl.textContent = 'Please define at least one milestone.';
+          return;
+        }
+
+        const totalPct = milestones.reduce((sum, m) => sum + m.percentage, 0);
+        if (totalPct > 100) {
+          errorEl.textContent = `Total milestone percentage cannot exceed 100%. Current total: ${totalPct}%.`;
+          return;
+        }
+
+        const rawMaterial = milestones.find(m => m.name.toLowerCase().includes('raw material'));
+        if (rawMaterial && rawMaterial.percentage > 40) {
+          errorEl.textContent = 'Raw material milestone cannot exceed 40%.';
+          return;
+        }
+
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+          errorEl.textContent = 'You must be logged in as SUPPLIER to create an order.';
+          return;
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/orders`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              order_id,
+              buyer_name,
+              value,
+              delivery_date,
+              milestones
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            errorEl.textContent = data.message || 'Failed to create order.';
+          } else {
+            successEl.textContent = 'Order created successfully. Awaiting admin approval.';
+            form.reset();
+            milestoneState.splice(0, milestoneState.length, { name: '', percentage: '' });
+            renderMilestoneRows(milestoneState);
+          }
+        } catch (err) {
+          console.error(err);
+          errorEl.textContent = 'Error connecting to server.';
+        }
+      });
+    });
+  })();
+</script>
+

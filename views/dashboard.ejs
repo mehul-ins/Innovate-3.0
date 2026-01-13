@@ -1,22 +1,24 @@
 <section id="dashboard-section">
-  <div class="panel">
-    <h2>Actions</h2>
-    <div>
-      <% if (role === 'SUPPLIER') { %>
-        <p>You can create orders and propose milestones.</p>
-      <% } else if (role === 'ADMIN') { %>
-        <p>You can approve orders, verify proofs, and release funds.</p>
-      <% } else if (role === 'LENDER') { %>
-        <p>You can approve funding and review milestone budgets.</p>
-      <% } else { %>
-        <p>Dashboard role not specified.</p>
-      <% } %>
+  <% if (role === 'SUPPLIER') { %>
+    <%- include('partials/supplierOrderForm') %>
+  <% } else { %>
+    <div class="panel">
+      <h2>Actions</h2>
+      <div>
+        <% if (role === 'ADMIN') { %>
+          <p>You can approve orders, verify proofs, and release funds.</p>
+        <% } else if (role === 'LENDER') { %>
+          <p>You can approve funding and review milestone budgets.</p>
+        <% } else { %>
+          <p>Dashboard role not specified.</p>
+        <% } %>
+      </div>
     </div>
-  </div>
 
-  <div class="panel">
-    <h2>Orders</h2>
-    <p>This is a minimal dashboard view. Client-side JS can enhance this panel.</p>
-  </div>
+    <div class="panel">
+      <h2>Orders</h2>
+      <p>This is a minimal dashboard view. Client-side JS can enhance this panel.</p>
+    </div>
+  <% } %>
 </section>
 
