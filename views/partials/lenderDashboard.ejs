@@ -11,12 +11,8 @@
     <h2>Approve Funding Request</h2>
     <div id="approval-order-details"></div>
     <form id="lender-approval-form">
-      <div class="form-group">
-        <label><strong>Set Milestone Timelines (days from approval):</strong></label>
-        <div id="milestone-timelines"></div>
-      </div>
       <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-        <button type="submit" class="btn-success" style="flex: 1;">✓ Approve & Lock Funds</button>
+        <button type="submit" class="btn-success" style="flex: 1;">✓ Approve & Create Milestones</button>
         <button type="button" onclick="closeApprovalModal()" style="flex: 1;">Cancel</button>
       </div>
       <div id="approval-error" class="error" style="margin-top: 0.5rem;"></div>
@@ -106,9 +102,17 @@
             'Authorization': `Bearer ${token}`
           }
         });
+        
+        if (!res.ok) {
+          if (res.status === 401) {
+            container.innerHTML = '<p class="error">Session expired. Please refresh the page and login again.</p>';
+          } else {
+            container.innerHTML = `<p class="error">Error loading requests (${res.status})</p>`;
+          }
+          return;
+        }
+        
         const data = await res.json();
-
-        if (res.ok) {
           renderPendingRequests(data.orders || [], data.notifications || []);
         } else {
           container.innerHTML = `<p class="error">Error loading requests: ${data.message || 'Unknown error'}</p>`;
@@ -151,22 +155,12 @@
               <p><strong>Buyer:</strong> ${order.buyer_name}</p>
               <p><strong>Order Value:</strong> $${order.value.toLocaleString()}</p>
               <p><strong>Supplier:</strong> ${order.supplier?.name || 'N/A'} (${order.supplier?.email || 'N/A'})</p>
+              <p><strong>Milestones to be created:</strong></p>
+              <ul style="margin-left: 1.5rem; margin-top: 0.25rem;">
+                ${order.milestones.map((m, idx) => `<li>${m.name}: ${m.percentage}% ($${((order.value * m.percentage) / 100).toLocaleString()})  <strong>${idx === 0 ? '(PENDING)' : '(LOCKED)'}</strong></li>`).join('')}
+              </ul>
             </div>
           `;
-
-          timelinesEl.innerHTML = order.milestones.map((m, idx) => `
-            <div style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-              <label style="flex: 1; min-width: 150px;">${m.name} (${m.percentage}%):</label>
-              <input type="number" 
-                     class="timeline-input" 
-                     data-milestone-name="${m.name}"
-                     placeholder="Days" 
-                     min="1" 
-                     required 
-                     style="width: 100px; padding: 0.25rem;">
-              <span style="color: #666; font-size: 0.9rem;">days</span>
-            </div>
-          `).join('');
         } else {
           errorEl.textContent = data.message || 'Error loading order details.';
         }
@@ -238,17 +232,6 @@
           const errorEl = document.getElementById('approval-error');
           errorEl.textContent = '';
 
-          const timelineInputs = document.querySelectorAll('.timeline-input');
-          const milestone_timelines = Array.from(timelineInputs).map(input => ({
-            milestone_name: input.dataset.milestoneName,
-            timeline_days: parseInt(input.value)
-          })).filter(t => t.timeline_days > 0);
-
-          if (milestone_timelines.length === 0) {
-            errorEl.textContent = 'Please set timelines for at least one milestone.';
-            return;
-          }
-
           const token = localStorage.getItem('authToken');
           if (!token) {
             errorEl.textContent = 'Please login first.';
@@ -256,13 +239,13 @@
           }
 
           try {
-            const res = await fetch(`${API_BASE}/lenders/orders/${currentOrderId}/approve`, {
-              method: 'POST',
+            const res = await fetch(`${API_BASE}/orders/${currentOrderId}/lender-approve`, {
+              method: 'PATCH',
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ milestone_timelines })
+              body: JSON.stringify({})
             });
 
             const data = await res.json();

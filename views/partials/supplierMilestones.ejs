@@ -45,9 +45,19 @@
         const ordersRes = await fetch(`${API_BASE}/orders`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        
+        if (!ordersRes.ok) {
+          if (ordersRes.status === 401) {
+            container.innerHTML = '<p class="error">Session expired. Please refresh the page and login again.</p>';
+          } else {
+            container.innerHTML = `<p class="error">Error loading orders (${ordersRes.status})</p>`;
+          }
+          return;
+        }
+        
         const ordersData = await ordersRes.json();
 
-        if (!ordersRes.ok || !ordersData.orders) {
+        if (!ordersData.orders) {
           container.innerHTML = '<p class="error">Error loading orders.</p>';
           return;
         }
@@ -56,6 +66,12 @@
         const userRes = await fetch(`${API_BASE}/auth/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        
+        if (!userRes.ok) {
+          container.innerHTML = '<p class="error">Unable to identify your user account. Please refresh and login again.</p>';
+          return;
+        }
+        
         const userData = await userRes.json();
         const supplierId = userData.user?.id;
 

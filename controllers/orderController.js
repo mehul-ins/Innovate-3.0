@@ -201,11 +201,37 @@ async function createNotification({ user_id, order_id, milestone_id, type, messa
 // @access  Private (ADMIN only)
 exports.getAllOrders = async (req, res) => {
   try {
+    console.log('[getAllOrders] REQUEST - Role:', req.user.role, 'User ID:', req.user.id);
+
+    let query = {};
+    
+    // ROLE-BASED FILTERING
+    if (req.user.role === 'ADMIN') {
+      // Admin sees:
+      // 1. LENDER_APPROVED orders (for fund locking)
+      // 2. ACTIVE orders (for milestone verification)
+      query.status = { $in: [ORDER_STATUS.LENDER_APPROVED, ORDER_STATUS.ACTIVE] };
+      console.log('[getAllOrders] ADMIN - Filtering for LENDER_APPROVED or ACTIVE orders');
+    } else if (req.user.role === 'LENDER') {
+      // Lender sees only orders they're assigned to
+      query.lender_id = req.user.id;
+      console.log('[getAllOrders] LENDER - Filtering for lender_id:', req.user.id);
+    } else if (req.user.role === 'SUPPLIER') {
+      // Supplier sees only their own orders
+      query.created_by = req.user.id;
+      console.log('[getAllOrders] SUPPLIER - Filtering for created_by:', req.user.id);
+    }
+
     // Retrieve all orders and populate supplier and lender information
-    const orders = await Order.find()
+    const orders = await Order.find(query)
       .populate('created_by', 'name email role')
       .populate('lender_id', 'name email')
       .sort({ createdAt: -1 }); // Most recent first
+
+    console.log('[getAllOrders] RESULT - Found', orders.length, 'orders for role:', req.user.role);
+    if (orders.length > 0) {
+      console.log('[getAllOrders] Sample order statuses:', orders.slice(0, 3).map(o => ({ id: o.order_id, status: o.status })));
+    }
 
     res.status(200).json({
       success: true,
@@ -226,6 +252,7 @@ exports.getAllOrders = async (req, res) => {
       }))
     });
   } catch (error) {
+    console.error('[getAllOrders] ERROR:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching orders',
@@ -255,8 +282,11 @@ exports.approveOrder = async (req, res) => {
   try {
     const { id } = req.params;
 
+    console.log('[approveOrder] REQUEST - Admin Role:', req.user.role, 'Admin ID:', req.user.id, 'Order ID:', id);
+
     // Validate order ID format
     if (!id || id.length !== 24) {
+      console.log('[approveOrder] ERROR - Invalid order ID format:', id);
       return res.status(400).json({
         success: false,
         message: 'Invalid order ID'
@@ -266,14 +296,18 @@ exports.approveOrder = async (req, res) => {
     // Find order
     const order = await Order.findById(id).populate('created_by', 'name email');
     if (!order) {
+      console.log('[approveOrder] ERROR - Order not found:', id);
       return res.status(404).json({
         success: false,
         message: 'Order not found'
       });
     }
 
+    console.log('[approveOrder] ORDER FOUND - Order ID:', order.order_id, 'Status:', order.status);
+
     // Phase 7: Prevent actions on CLOSED orders
     if (order.status === ORDER_STATUS.CLOSED) {
+      console.log('[approveOrder] ERROR - Order is CLOSED');
       return res.status(400).json({
         success: false,
         message: 'Cannot approve order. Order is CLOSED. No further actions allowed.',
@@ -283,6 +317,7 @@ exports.approveOrder = async (req, res) => {
 
     // Check if order is in PENDING_VERIFICATION state
     if (order.status !== ORDER_STATUS.PENDING_VERIFICATION) {
+      console.log('[approveOrder] ERROR - Wrong status. Current:', order.status, 'Required:', ORDER_STATUS.PENDING_VERIFICATION);
       return res.status(400).json({
         success: false,
         message: `Cannot approve order. Current status: ${order.status}. Only PENDING_VERIFICATION orders can be approved.`,
@@ -300,6 +335,8 @@ exports.approveOrder = async (req, res) => {
     order.status = ORDER_STATUS.APPROVED;
     order.funds_locked = true;
     await order.save();
+
+    console.log('[approveOrder] SUCCESS - Order approved, status updated to APPROVED');
 
     // Auto-generate milestones when order is approved
     // This ensures transparent payment flow tied to deliverables
@@ -321,6 +358,8 @@ exports.approveOrder = async (req, res) => {
     // Insert all milestones
     await Milestone.insertMany(milestones);
 
+    console.log('[approveOrder] MILESTONES CREATED - Count:', milestones.length);
+
     // Create LOCK transaction in mock escrow ledger
     // This records that the full order value is now reserved in escrow
     // Mock Escrow: Funds are held by system, not released until milestones completed
@@ -332,6 +371,8 @@ exports.approveOrder = async (req, res) => {
       description: `Order ${order.order_id} approved. Funds locked in escrow. Total: $${order.value}`,
       status: 'RECORDED'
     });
+
+    console.log('[approveOrder] LOCK TRANSACTION CREATED - Amount:', order.value);
 
     res.status(200).json({
       success: true,
@@ -350,6 +391,178 @@ exports.approveOrder = async (req, res) => {
         updatedAt: order.updatedAt
       },
       milestones: milestones.map(m => ({
+        name: m.name,
+        amount: m.amount,
+        percentage: m.percentage,
+        status: m.status
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error approving order',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Lender approval - Accept order request and create milestones
+ * @route   PATCH /api/orders/:id/lender-approve
+ * @access  Private (LENDER only)
+ * 
+ * Flow:
+ * 1. Verify order status is PENDING_LENDER_APPROVAL
+ * 2. Verify logged-in user is the assigned lender
+ * 3. Create milestone documents from supplier's proposal
+ * 4. Set first milestone to PENDING, rest to LOCKED
+ * 5. Update order status to LENDER_APPROVED
+ * 6. Notify admin and supplier
+ */
+exports.lenderApproveOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lenderId = req.user.id;
+
+    // DEBUG: Log role and request
+    console.log('=== LENDER APPROVE ORDER ===');
+    console.log('ROLE:', req.user.role);
+    console.log('LENDER ID:', lenderId);
+    console.log('ORDER ID:', id);
+
+    // Validate order ID format
+    if (!id || id.length !== 24) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order ID'
+      });
+    }
+
+    // Find order
+    const order = await Order.findById(id).populate('created_by', 'name email');
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // DEBUG: Log order details
+    console.log('ORDER STATUS:', order.status);
+    console.log('ORDER LENDER_ID:', order.lender_id.toString());
+    console.log('LOGGED-IN LENDER ID:', lenderId);
+
+    // Verify this order is for the logged-in lender
+    if (order.lender_id.toString() !== lenderId) {
+      console.log('ERROR: Lender ID mismatch');
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to approve this order. You are not the assigned lender.'
+      });
+    }
+
+    // Check order is in PENDING_LENDER_APPROVAL state
+    if (order.status !== ORDER_STATUS.PENDING_LENDER_APPROVAL) {
+      console.log('ERROR: Wrong order status for approval');
+      return res.status(400).json({
+        success: false,
+        message: `Cannot approve order. Current status: ${order.status}. Only PENDING_LENDER_APPROVAL orders can be approved by lender.`,
+        currentStatus: order.status
+      });
+    }
+
+    // Check if milestones already exist (prevent duplicates)
+    const existingMilestones = await Milestone.findOne({ order_id: order._id });
+    if (existingMilestones) {
+      console.log('ERROR: Milestones already exist');
+      return res.status(400).json({
+        success: false,
+        message: 'Milestones have already been created for this order'
+      });
+    }
+
+    console.log('Creating milestones from proposal...');
+
+    // Create milestone documents from supplier's proposal
+    const milestonesToCreate = [];
+    
+    if (order.milestones && Array.isArray(order.milestones)) {
+      order.milestones.forEach((milestone, index) => {
+        const amount = (order.value * milestone.percentage) / 100;
+        milestonesToCreate.push({
+          order_id: order._id,
+          name: milestone.name,
+          amount: amount,
+          percentage: milestone.percentage,
+          // First milestone is PENDING (supplier can start work)
+          // Rest are LOCKED (waiting for previous to complete)
+          status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
+          order: index + 1,
+          lender_id: lenderId
+        });
+      });
+    } else {
+      // Fallback: create default milestones if not provided
+      MILESTONE_TYPES.forEach((milestone, index) => {
+        const amount = (order.value * milestone.percentage) / 100;
+        milestonesToCreate.push({
+          order_id: order._id,
+          name: milestone.name,
+          amount: amount,
+          percentage: milestone.percentage,
+          status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
+          order: index + 1,
+          lender_id: lenderId
+        });
+      });
+    }
+
+    // Insert all milestones
+    await Milestone.insertMany(milestonesToCreate);
+    console.log('SUCCESS: Created', milestonesToCreate.length, 'milestones');
+
+    // Update order status to LENDER_APPROVED
+    order.status = ORDER_STATUS.LENDER_APPROVED;
+    order.lender_approval_status = 'APPROVED';
+    await order.save();
+    console.log('SUCCESS: Order status updated to LENDER_APPROVED');
+
+    // Create notification for admin: LENDER_APPROVED_ORDER
+    await Notification.create({
+      user_id: null, // Admin notification (system-wide)
+      order_id: order._id,
+      type: 'LENDER_APPROVED_ORDER',
+      message: `Lender has approved order ${order.order_id}. Milestones created and ready for fund transfer.`,
+      read: false
+    });
+
+    // Create notification for supplier: LENDER_APPROVED_ORDER
+    await Notification.create({
+      user_id: order.created_by._id,
+      order_id: order._id,
+      type: 'LENDER_APPROVED_ORDER',
+      message: `Your order ${order.order_id} has been approved by the lender. Milestones are now active.`,
+      read: false
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Order approved by lender successfully. Milestones created.',
+      order: {
+        id: order._id,
+        order_id: order.order_id,
+        buyer_name: order.buyer_name,
+        value: order.value,
+        delivery_date: order.delivery_date,
+        status: order.status,
+        lender_approval_status: order.lender_approval_status,
+        milestones_created: milestonesToCreate.length,
+        created_by: order.created_by,
+        lender_id: order.lender_id,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+      },
+      milestones: milestonesToCreate.map(m => ({
         name: m.name,
         amount: m.amount,
         percentage: m.percentage,
@@ -387,8 +600,11 @@ exports.lockFunds = async (req, res) => {
   try {
     const { id } = req.params;
 
+    console.log('[lockFunds] REQUEST - Admin Role:', req.user.role, 'Admin ID:', req.user.id, 'Order ID:', id);
+
     // Validate order ID format
     if (!id || id.length !== 24) {
+      console.log('[lockFunds] ERROR - Invalid order ID format:', id);
       return res.status(400).json({
         success: false,
         message: 'Invalid order ID'
@@ -401,14 +617,18 @@ exports.lockFunds = async (req, res) => {
       .populate('lender_id', 'name email');
 
     if (!order) {
+      console.log('[lockFunds] ERROR - Order not found:', id);
       return res.status(404).json({
         success: false,
         message: 'Order not found'
       });
     }
 
+    console.log('[lockFunds] ORDER FOUND - Order ID:', order.order_id, 'Status:', order.status, 'Funds Locked:', order.funds_locked, 'Value:', order.value);
+
     // Prevent actions on CLOSED orders
     if (order.status === ORDER_STATUS.CLOSED) {
+      console.log('[lockFunds] ERROR - Order is CLOSED, cannot lock funds');
       return res.status(400).json({
         success: false,
         message: 'Cannot lock funds. Order is CLOSED. No further actions allowed.',
@@ -418,6 +638,7 @@ exports.lockFunds = async (req, res) => {
 
     // Only LENDER_APPROVED orders can have funds locked
     if (order.status !== ORDER_STATUS.LENDER_APPROVED) {
+      console.log('[lockFunds] ERROR - Wrong status. Current:', order.status, 'Required:', ORDER_STATUS.LENDER_APPROVED);
       return res.status(400).json({
         success: false,
         message: `Cannot lock funds. Order must be LENDER_APPROVED. Current status: ${order.status}`,
@@ -428,6 +649,7 @@ exports.lockFunds = async (req, res) => {
 
     // Check if funds are already locked
     if (order.funds_locked) {
+      console.log('[lockFunds] ERROR - Funds already locked');
       return res.status(400).json({
         success: false,
         message: 'Funds are already locked for this order.',
@@ -439,6 +661,8 @@ exports.lockFunds = async (req, res) => {
     order.funds_locked = true;
     await order.save();
 
+    console.log('[lockFunds] SUCCESS - Funds locked for order:', order.order_id);
+
     // Create LOCK transaction in mock escrow ledger
     // This records that the full order value is now reserved in escrow
     const transaction = await Transaction.create({
@@ -449,6 +673,8 @@ exports.lockFunds = async (req, res) => {
       description: `Order ${order.order_id} - Funds locked by admin. Lender: ${order.lender_id?.name || 'N/A'}. Total: $${order.value}`,
       status: 'RECORDED'
     });
+
+    console.log('[lockFunds] TRANSACTION CREATED - Type:', transaction.type, 'Amount:', transaction.amount);
 
     res.status(200).json({
       success: true,
@@ -471,6 +697,7 @@ exports.lockFunds = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('[lockFunds] ERROR:', error);
     res.status(500).json({
       success: false,
       message: 'Error locking funds',

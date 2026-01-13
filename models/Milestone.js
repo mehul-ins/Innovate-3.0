@@ -26,6 +26,12 @@ const milestoneSchema = new mongoose.Schema(
       required: [true, 'Order ID is required'],
       index: true
     },
+    lender_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      description: 'Lender who approved this milestone'
+    },
     name: {
       type: String,
       required: [true, 'Milestone name is required'],

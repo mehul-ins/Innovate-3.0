@@ -265,8 +265,11 @@ exports.verifyProof = async (req, res) => {
     const { id } = req.params;
     const { verified, rejection_reason } = req.body; // verified: true/false
 
+    console.log('[verifyProof] REQUEST - Admin Role:', req.user.role, 'Admin ID:', req.user.id, 'Milestone ID:', id, 'Verified:', verified);
+
     // Validate milestone ID format
     if (!id || id.length !== 24) {
+      console.log('[verifyProof] ERROR - Invalid milestone ID format:', id);
       return res.status(400).json({
         success: false,
         message: 'Invalid milestone ID'
@@ -275,6 +278,7 @@ exports.verifyProof = async (req, res) => {
 
     // Validate verified field
     if (typeof verified !== 'boolean') {
+      console.log('[verifyProof] ERROR - Invalid verified field:', verified);
       return res.status(400).json({
         success: false,
         message: 'verified field is required and must be true or false'
@@ -284,14 +288,18 @@ exports.verifyProof = async (req, res) => {
     // Find milestone with order details
     const milestone = await Milestone.findById(id).populate('order_id', 'order_id created_by lender_id');
     if (!milestone) {
+      console.log('[verifyProof] ERROR - Milestone not found:', id);
       return res.status(404).json({
         success: false,
         message: 'Milestone not found'
       });
     }
 
+    console.log('[verifyProof] MILESTONE FOUND - Name:', milestone.name, 'Status:', milestone.status, 'Proof Status:', milestone.proof_verification_status, 'Has Proof:', !!milestone.proof_file_path);
+
     // Check if proof has been uploaded
     if (!milestone.proof_file_path) {
+      console.log('[verifyProof] ERROR - No proof file uploaded');
       return res.status(400).json({
         success: false,
         message: 'No proof file uploaded for this milestone. Supplier must upload proof first.'
@@ -300,6 +308,7 @@ exports.verifyProof = async (req, res) => {
 
     // Check if proof is already verified
     if (milestone.proof_verification_status === 'VERIFIED') {
+      console.log('[verifyProof] ERROR - Proof already verified');
       return res.status(400).json({
         success: false,
         message: 'Proof is already verified for this milestone.'
@@ -311,10 +320,12 @@ exports.verifyProof = async (req, res) => {
       milestone.proof_verification_status = 'VERIFIED';
       milestone.proof_verified_at = new Date();
       milestone.proof_verified_by = req.user.id;
+      console.log('[verifyProof] SUCCESS - Proof VERIFIED for milestone:', milestone.name);
     } else {
       milestone.proof_verification_status = 'REJECTED';
       milestone.proof_verified_at = new Date();
       milestone.proof_verified_by = req.user.id;
+      console.log('[verifyProof] REJECTED - Proof REJECTED for milestone:', milestone.name, 'Reason:', rejection_reason);
       // Optionally delete rejected proof file
       // For now, we keep it for audit trail
     }
@@ -333,6 +344,8 @@ exports.verifyProof = async (req, res) => {
       read: false
     });
 
+    console.log('[verifyProof] NOTIFICATION CREATED for supplier:', milestone.order_id.created_by);
+
     res.status(200).json({
       success: true,
       message: verified ? 'Proof verified successfully.' : 'Proof rejected.',
@@ -345,6 +358,7 @@ exports.verifyProof = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('[verifyProof] ERROR:', error);
     res.status(500).json({
       success: false,
       message: 'Error verifying proof',

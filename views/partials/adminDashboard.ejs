@@ -70,9 +70,17 @@
         const res = await fetch(`${API_BASE}/orders`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        
+        if (!res.ok) {
+          if (res.status === 401) {
+            container.innerHTML = '<p class="error">Session expired. Please refresh the page and login again.</p>';
+          } else {
+            container.innerHTML = `<p class="error">Error loading orders (${res.status})</p>`;
+          }
+          return;
+        }
+        
         const data = await res.json();
-
-        if (res.ok && data.orders) {
           // Filter orders that are LENDER_APPROVED but funds not locked
           const pendingLock = data.orders.filter(o => 
             o.status === 'LENDER_APPROVED' && !o.funds_locked
@@ -146,8 +154,17 @@
             const txRes = await fetch(`${API_BASE}/transactions/order/${order.id}`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
+            
+            if (!txRes.ok) {
+              if (txRes.status === 401) {
+                container.innerHTML = '<p class="error">Session expired. Please refresh the page and login again.</p>';
+                return;
+              }
+              continue; // Skip this order's transactions
+            }
+            
             const txData = await txRes.json();
-            if (txRes.ok && txData.transactions) {
+            if (txData.transactions) {
               allTransactions.push(...txData.transactions.map(t => ({
                 ...t,
                 order_id_display: order.order_id
@@ -254,12 +271,17 @@
         const ordersRes = await fetch(`${API_BASE}/orders`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        const ordersData = await ordersRes.json();
-
-        if (!ordersRes.ok || !ordersData.orders) {
-          container.innerHTML = '<p class="error">Error loading orders.</p>';
+        
+        if (!ordersRes.ok) {
+          if (ordersRes.status === 401) {
+            container.innerHTML = '<p class="error">Session expired. Please refresh the page and login again.</p>';
+          } else {
+            container.innerHTML = `<p class="error">Error loading orders (${ordersRes.status})</p>`;
+          }
           return;
         }
+        
+        const ordersData = await ordersRes.json();
 
         // Collect all milestones with pending proofs
         const pendingProofs = [];

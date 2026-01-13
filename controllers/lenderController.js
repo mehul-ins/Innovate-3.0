@@ -47,6 +47,11 @@ exports.getPendingRequests = async (req, res) => {
   try {
     const lenderId = req.user.id;
 
+    // DEBUG: Log role and lender ID
+    console.log('=== GET PENDING REQUESTS ===');
+    console.log('ROLE:', req.user.role);
+    console.log('LENDER ID:', lenderId);
+
     // Get all unread notifications for this lender
     const notifications = await Notification.find({
       user_id: lenderId,
@@ -69,6 +74,11 @@ exports.getPendingRequests = async (req, res) => {
     })
       .populate('created_by', 'name email')
       .sort({ createdAt: -1 });
+
+    console.log('FOUND', orders.length, 'PENDING_LENDER_APPROVAL orders for this lender');
+    orders.forEach(o => {
+      console.log('  - Order:', o.order_id, 'Status:', o.status, 'Lender:', o.lender_id.toString());
+    });
 
     res.status(200).json({
       success: true,

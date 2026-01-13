@@ -260,16 +260,25 @@ async function loadOrders() {
 
     try {
         const response = await fetch(`${API_BASE}/orders`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
+            headers: { 
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
         });
 
         if (response.status === 401) {
-            console.log('Authentication required. Please login.');
-            // Clear stale auth data
+            console.log('Authentication required. Session may have expired. Please login again.');
+            // Clear stale auth data and show login
             localStorage.removeItem('authToken');
             localStorage.removeItem('currentUser');
             authToken = null;
             currentUser = null;
+            currentOrders = [];
+            
+            // Show login section
+            document.getElementById('login-section').style.display = 'block';
+            document.getElementById('dashboard-section').style.display = 'none';
+            document.getElementById('statistics-section').style.display = 'none';
             return;
         }
 
