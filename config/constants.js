@@ -86,10 +86,36 @@ const TRANSACTION_TYPE = {
   RELEASE: 'RELEASE'
 };
 
+/**
+ * Production Milestone Operational Release Control
+ * 
+ * Exposure Control Mechanism:
+ * For the Production milestone, not all funds are released immediately upon completion.
+ * This is a risk management strategy to limit financial exposure.
+ * 
+ * Scenario:
+ * - Production Milestone allocated: $40,000 (40% of $100k order)
+ * - Operational cap: 75% of milestone amount = $30,000
+ * - Holdback: 25% = $10,000
+ * 
+ * Why this matters:
+ * 1. Risk Management: Hold back funds until full delivery to ensure performance
+ * 2. Quality Control: Supplier has incentive to complete delivery before receiving final payment
+ * 3. Working Capital: Supplier gets $30k for production operations
+ * 4. Safety Buffer: $10k held until delivery completion ensures supplier commitment
+ * 
+ * One-time Release:
+ * - Production milestone can only release operational amount ONCE
+ * - Prevents double-counting or multiple releases
+ * - Remaining holdback released only when final delivery milestone completes
+ */
+const PRODUCTION_OPERATIONAL_CAP = 0.75; // 75% of production milestone amount can be released
+
 module.exports = {
   ROLES,
   ORDER_STATUS,
   MILESTONE_STATUS,
   MILESTONE_TYPES,
-  TRANSACTION_TYPE
+  TRANSACTION_TYPE,
+  PRODUCTION_OPERATIONAL_CAP
 };

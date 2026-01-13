@@ -1,7 +1,7 @@
 const Milestone = require('../models/Milestone');
 const Order = require('../models/Order');
 const Transaction = require('../models/Transaction');
-const { MILESTONE_STATUS, TRANSACTION_TYPE } = require('../config/constants');
+const { MILESTONE_STATUS, TRANSACTION_TYPE, PRODUCTION_OPERATIONAL_CAP } = require('../config/constants');
 
 /**
  * Milestone Controller
@@ -162,20 +162,36 @@ exports.completeMilestone = async (req, res) => {
       });
     }
 
+    // Determine release amount based on milestone type
+    // Production milestone has operational cap to limit financial exposure
+    let releaseAmount = milestone.amount;
+    let holdbackAmount = 0;
+
+    if (milestone.name === 'Production') {
+      // Exposure Control: For Production milestone, only release operational amount
+      // This holds back funds until final delivery to ensure supplier commitment
+      // Example: $40k production milestone releases only $30k (75%), holds back $10k
+      releaseAmount = milestone.amount * PRODUCTION_OPERATIONAL_CAP;
+      holdbackAmount = milestone.amount - releaseAmount;
+    }
+
     // Update milestone to COMPLETED and add proof
     milestone.status = MILESTONE_STATUS.COMPLETED;
     milestone.proof = proof;
-    milestone.released_amount = milestone.amount; // Full amount released
+    milestone.released_amount = releaseAmount; // Amount released (may be partial for Production)
     await milestone.save();
 
     // Create RELEASE transaction in mock escrow ledger
     // This records that funds are being released from escrow to supplier
+    // For Production: Only operational amount is released; rest held back
     await Transaction.create({
       order_id: milestone.order_id._id,
       milestone_id: milestone._id,
       type: TRANSACTION_TYPE.RELEASE,
-      amount: milestone.amount,
-      description: `Milestone "${milestone.name}" completed and approved. Funds released: $${milestone.amount}`,
+      amount: releaseAmount,
+      description: holdbackAmount > 0 
+        ? `Milestone "${milestone.name}" completed. Operational release: $${releaseAmount}. Holdback: $${holdbackAmount}` 
+        : `Milestone "${milestone.name}" completed and approved. Funds released: $${releaseAmount}`,
       status: 'RECORDED'
     });
 
