@@ -23,6 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('login-form').addEventListener('submit', handleLogin);
     document.getElementById('create-order-form').addEventListener('submit', handleCreateOrder);
     document.getElementById('complete-milestone-form').addEventListener('submit', handleCompleteMilestone);
+
+    // Milestone UI logic
+    document.getElementById('add-milestone-btn').addEventListener('click', addMilestoneRow);
+    renderMilestoneRows();
 });
 
 // Authentication
@@ -240,16 +244,41 @@ function openCreateOrderModal() {
     // Set min date to today
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('delivery-date').setAttribute('min', today);
+    renderMilestoneRows();
 }
 
 async function handleCreateOrder(e) {
     e.preventDefault();
     
+    // Collect milestone data
+    const milestoneRows = document.querySelectorAll('.milestone-row');
+    const milestones = [];
+    milestoneRows.forEach(row => {
+        const name = row.querySelector('.milestone-name').value.trim();
+        const amount = parseFloat(row.querySelector('.milestone-amount').value);
+        if (name && !isNaN(amount)) {
+            milestones.push({ name, amount });
+        }
+    });
+
+    // Basic client-side validation: ensure milestone amounts sum to order value
+    const orderValue = parseFloat(document.getElementById('order-value').value);
+    const totalMilestoneAmount = milestones.reduce((sum, m) => sum + m.amount, 0);
+    const createOrderErrorEl = document.getElementById('create-order-error');
+
+    if (totalMilestoneAmount !== orderValue) {
+        createOrderErrorEl.textContent = `Sum of milestone amounts ($${totalMilestoneAmount}) must equal order value ($${orderValue}).`;
+        return;
+    } else {
+        createOrderErrorEl.textContent = '';
+    }
+
     const orderData = {
         order_id: document.getElementById('order-id').value,
         buyer_name: document.getElementById('buyer-name').value,
         value: parseFloat(document.getElementById('order-value').value),
-        delivery_date: document.getElementById('delivery-date').value
+        delivery_date: document.getElementById('delivery-date').value,
+        milestones
     };
     
     try {
@@ -268,6 +297,7 @@ async function handleCreateOrder(e) {
             alert('Order created successfully!');
             closeModal('create-order-modal');
             document.getElementById('create-order-form').reset();
+            renderMilestoneRows();
             refreshOrders();
         } else {
             document.getElementById('create-order-error').textContent = data.message || 'Failed to create order';
@@ -276,6 +306,36 @@ async function handleCreateOrder(e) {
         document.getElementById('create-order-error').textContent = 'Error creating order';
         console.error(error);
     }
+}
+
+// Milestone UI helpers
+function renderMilestoneRows() {
+    const milestoneList = document.getElementById('milestone-list');
+    milestoneList.innerHTML = '';
+    // Start with one row if none exist
+    if (!window.milestoneRowsState || window.milestoneRowsState.length === 0) {
+        window.milestoneRowsState = [ { name: '', amount: '' } ];
+    }
+    window.milestoneRowsState.forEach((milestone, idx) => {
+        const row = document.createElement('div');
+        row.className = 'milestone-row';
+        row.innerHTML = `
+            <input type="text" class="milestone-name" placeholder="Milestone name" value="${milestone.name || ''}" required style="width: 40%"> 
+            <input type="number" class="milestone-amount" placeholder="Amount" value="${milestone.amount || ''}" min="1" required style="width: 30%"> 
+            <button type="button" class="remove-milestone-btn" data-idx="${idx}">Remove</button>
+        `;
+        row.querySelector('.remove-milestone-btn').onclick = function() {
+            window.milestoneRowsState.splice(idx, 1);
+            renderMilestoneRows();
+        };
+        milestoneList.appendChild(row);
+    });
+}
+
+function addMilestoneRow() {
+    if (!window.milestoneRowsState) window.milestoneRowsState = [];
+    window.milestoneRowsState.push({ name: '', amount: '' });
+    renderMilestoneRows();
 }
 
 // Order Details & Milestones

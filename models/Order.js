@@ -50,7 +50,30 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true
-    }
+    },
+    // Supplier-defined milestone breakdown (dynamic milestones)
+    // Structure: [{ name: string, amount: number, percentage: number }, ...]
+    // Amounts must sum to 100% of order value; percentages are derived and validated
+    milestones: [
+      {
+        name: {
+          type: String,
+          required: [true, 'Milestone name is required']
+        },
+        amount: {
+          type: Number,
+          required: [true, 'Milestone amount is required'],
+          min: [0, 'Amount must be positive']
+        },
+        percentage: {
+          type: Number,
+          required: [true, 'Milestone percentage is required'],
+          min: [0, 'Percentage must be positive'],
+          max: [100, 'Percentage cannot exceed 100']
+        },
+        _id: false // Disable automatic ID for sub-documents
+      }
+    ]
   },
   {
     timestamps: true // Adds createdAt and updatedAt fields
@@ -62,5 +85,67 @@ orderSchema.index({ status: 1 });
 orderSchema.index({ created_by: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
+
+/**
+ * Validation helper for milestone breakdown
+ * Enforces strict platform-controlled risk limits
+ */
+Order.validateMilestones = function(milestones) {
+  // Check if milestones array exists and has at least one milestone
+  if (!milestones || !Array.isArray(milestones) || milestones.length === 0) {
+    return {
+      isValid: false,
+      error: 'Milestone breakdown is required. Must provide at least one milestone.'
+    };
+  }
+
+  let totalPercentage = 0;
+  let hasRawMaterial = false;
+
+  for (const milestone of milestones) {
+    // Validate milestone name exists
+    if (!milestone.name || typeof milestone.name !== 'string' || milestone.name.trim() === '') {
+      return {
+        isValid: false,
+        error: 'Each milestone must have a non-empty name.'
+      };
+    }
+
+    // Validate percentage is a number
+    if (typeof milestone.percentage !== 'number' || milestone.percentage <= 0) {
+      return {
+        isValid: false,
+        error: `Milestone "${milestone.name}" has invalid percentage. Must be a positive number.`
+      };
+    }
+
+    totalPercentage += milestone.percentage;
+
+    // Check for Raw Material milestone and enforce 40% cap
+    if (milestone.name.toLowerCase().includes('raw material')) {
+      hasRawMaterial = true;
+      if (milestone.percentage > 40) {
+        return {
+          isValid: false,
+          error: 'Raw material milestone cannot exceed 40%. System enforces strict risk controls.'
+        };
+      }
+    }
+  }
+
+  // Validate total percentage must be exactly 100% (strict risk control)
+  if (totalPercentage !== 100) {
+    return {
+      isValid: false,
+      error: `Total milestone percentage must be exactly 100%. Current total: ${totalPercentage}%`
+    };
+  }
+
+  return {
+    isValid: true,
+    totalPercentage: totalPercentage,
+    error: null
+  };
+};
 
 module.exports = Order;

@@ -19,13 +19,101 @@ const { MILESTONE_STATUS, MILESTONE_TYPES, ORDER_STATUS, TRANSACTION_TYPE } = re
 // @access  Private (SUPPLIER only)
 exports.createOrder = async (req, res) => {
   try {
-    const { order_id, buyer_name, value, delivery_date } = req.body;
+    const { order_id, buyer_name, value, delivery_date, milestones } = req.body;
 
     // Validate required fields
     if (!order_id || !buyer_name || !value || !delivery_date) {
       return res.status(400).json({
         success: false,
         message: 'Please provide all required fields: order_id, buyer_name, value, delivery_date'
+      });
+    }
+
+    // Validate milestone breakdown is provided
+    if (!milestones) {
+      return res.status(400).json({
+        success: false,
+        message: 'Milestone breakdown is required. Must provide at least one milestone.'
+      });
+    }
+
+    // Normalize value
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue) || numericValue <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order value must be a positive number'
+      });
+    }
+
+    // Validate milestone structure based on amounts and compute percentages
+    let totalAmount = 0;
+    const processedMilestones = [];
+
+    for (const m of milestones) {
+      if (!m.name || typeof m.name !== 'string' || m.name.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          message: 'Each milestone must have a non-empty name.',
+          field: 'milestones'
+        });
+      }
+
+      const amount = Number(m.amount);
+      if (Number.isNaN(amount) || amount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Milestone "${m.name}" has invalid amount. Must be a positive number.`,
+          field: 'milestones'
+        });
+      }
+
+      totalAmount += amount;
+      const percentage = Number(((amount / numericValue) * 100).toFixed(2));
+
+      processedMilestones.push({
+        name: m.name,
+        amount,
+        percentage
+      });
+    }
+
+    // Ensure minimum number of milestones (at least 3)
+    if (processedMilestones.length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least three milestones are required.',
+        field: 'milestones'
+      });
+    }
+
+    // Ensure first milestone does not exceed 40% of order value
+    const firstMilestone = processedMilestones[0];
+    const firstMilestoneMax = numericValue * 0.4;
+    if (firstMilestone.amount > firstMilestoneMax) {
+      return res.status(400).json({
+        success: false,
+        message: `The first milestone amount (${firstMilestone.amount}) cannot exceed 40% of the order value (${firstMilestoneMax}).`,
+        field: 'milestones'
+      });
+    }
+
+    // Ensure total milestone amount matches order value
+    if (totalAmount !== numericValue) {
+      return res.status(400).json({
+        success: false,
+        message: `Sum of milestone amounts (${totalAmount}) must equal order value (${numericValue}).`,
+        field: 'milestones'
+      });
+    }
+
+    // Validate derived percentages (raw material cap, total must be 100%, etc.)
+    const milestonesValidation = Order.validateMilestones(processedMilestones);
+    if (!milestonesValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: milestonesValidation.error,
+        field: 'milestones'
       });
     }
 
@@ -52,8 +140,9 @@ exports.createOrder = async (req, res) => {
     const order = await Order.create({
       order_id,
       buyer_name,
-      value,
+      value: numericValue,
       delivery_date: deliveryDate,
+      milestones: processedMilestones,
       created_by: req.user.id, // Set from authenticated user
       status: ORDER_STATUS.PENDING_VERIFICATION,
       funds_locked: false
@@ -61,7 +150,7 @@ exports.createOrder = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Order created successfully. Status: PENDING_VERIFICATION',
+      message: 'Order created successfully. Status: PENDING_VERIFICATION. Awaiting admin approval.',
       order: {
         id: order._id,
         order_id: order.order_id,
@@ -70,6 +159,12 @@ exports.createOrder = async (req, res) => {
         delivery_date: order.delivery_date,
         status: order.status,
         funds_locked: order.funds_locked,
+        milestones: order.milestones.map(m => ({
+          name: m.name,
+          amount: m.amount,
+          percentage: m.percentage
+        })),
+        total_milestone_percentage: milestonesValidation.totalPercentage,
         created_by: order.created_by,
         createdAt: order.createdAt
       }
