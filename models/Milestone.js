@@ -51,7 +51,29 @@ const milestoneSchema = new mongoose.Schema(
     proof: {
       type: String,
       default: null,
-      description: 'URL or reference to completion proof (invoice, delivery note, etc.)'
+      description: 'Text description of proof (deprecated, use proof_file_path)'
+    },
+    proof_file_path: {
+      type: String,
+      default: null,
+      description: 'File path to uploaded proof document (PDF, JPG, PNG, DOC)'
+    },
+    proof_verification_status: {
+      type: String,
+      enum: ['PENDING', 'VERIFIED', 'REJECTED'],
+      default: null,
+      description: 'Admin verification status of proof'
+    },
+    proof_verified_at: {
+      type: Date,
+      default: null,
+      description: 'Date when proof was verified by admin'
+    },
+    proof_verified_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      description: 'Admin who verified the proof'
     },
     released_amount: {
       type: Number,

@@ -1,7 +1,11 @@
 const Milestone = require('../models/Milestone');
 const Order = require('../models/Order');
 const Transaction = require('../models/Transaction');
-const { MILESTONE_STATUS, TRANSACTION_TYPE, PRODUCTION_OPERATIONAL_CAP } = require('../config/constants');
+const Notification = require('../models/Notification');
+const User = require('../models/User');
+const { MILESTONE_STATUS, TRANSACTION_TYPE, PRODUCTION_OPERATIONAL_CAP, ROLES } = require('../config/constants');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Milestone Controller
@@ -68,6 +72,11 @@ exports.getOrderMilestones = async (req, res) => {
         status: m.status,
         released_amount: m.released_amount,
         proof: m.proof,
+        proof_file_path: m.proof_file_path,
+        proof_url: m.proof_file_path ? `/uploads/proofs/${path.basename(m.proof_file_path)}` : null,
+        proof_verification_status: m.proof_verification_status,
+        proof_verified_at: m.proof_verified_at,
+        proof_verified_by: m.proof_verified_by,
         order: m.order,
         createdAt: m.createdAt
       })),
@@ -91,9 +100,262 @@ exports.getOrderMilestones = async (req, res) => {
 };
 
 /**
- * @desc    Complete milestone
+ * @desc    Upload proof for milestone
+ * @route   POST /api/milestones/:id/upload-proof
+ * @access  Private (SUPPLIER only)
+ * 
+ * Proof Upload Workflow:
+ * 1. SUPPLIER uploads proof file (PDF, JPG, PNG, DOC)
+ * 2. File stored in uploads/proofs/
+ * 3. Milestone proof_file_path updated
+ * 4. proof_verification_status set to PENDING
+ * 5. Notifications sent to ADMIN and LENDER
+ * 
+ * Validations:
+ * - Only SUPPLIER can upload proof
+ * - Milestone must be PENDING status
+ * - Cannot upload proof for completed milestones
+ * - File type must be PDF, JPG, PNG, DOC, DOCX
+ */
+exports.uploadProof = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Proof file is required. Please upload a PDF, JPG, PNG, DOC, or DOCX file.'
+      });
+    }
+
+    // Validate milestone ID format
+    if (!id || id.length !== 24) {
+      // Delete uploaded file if milestone ID is invalid
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid milestone ID'
+      });
+    }
+
+    // Find milestone with order details
+    const milestone = await Milestone.findById(id).populate('order_id', 'order_id lender_id created_by');
+    if (!milestone) {
+      // Delete uploaded file if milestone not found
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({
+        success: false,
+        message: 'Milestone not found'
+      });
+    }
+
+    // Verify user is the supplier who created the order
+    if (milestone.order_id.created_by.toString() !== req.user.id) {
+      fs.unlinkSync(req.file.path);
+      return res.status(403).json({
+        success: false,
+        message: 'Only the supplier who created this order can upload proof'
+      });
+    }
+
+    // Check if milestone is already completed (immutable)
+    if (milestone.status === MILESTONE_STATUS.COMPLETED) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot upload proof. Milestone is already completed and immutable.',
+        current_status: milestone.status
+      });
+    }
+
+    // Only PENDING milestones can have proof uploaded
+    if (milestone.status !== MILESTONE_STATUS.PENDING) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: `Cannot upload proof. Milestone status must be PENDING. Current status: ${milestone.status}`,
+        allowed_status: MILESTONE_STATUS.PENDING,
+        current_status: milestone.status
+      });
+    }
+
+    // Delete old proof file if exists
+    if (milestone.proof_file_path) {
+      const oldFilePath = path.join(__dirname, '..', milestone.proof_file_path);
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+      }
+    }
+
+    // Update milestone with proof file path
+    milestone.proof_file_path = req.file.path;
+    milestone.proof_verification_status = 'PENDING';
+    milestone.proof_verified_at = null;
+    milestone.proof_verified_by = null;
+    await milestone.save();
+
+    // Create notifications for ADMIN and LENDER
+    const order = milestone.order_id;
+    
+    // Notify all ADMIN users
+    const adminUsers = await User.find({ role: ROLES.ADMIN }).select('_id');
+    for (const admin of adminUsers) {
+      await Notification.create({
+        user_id: admin._id,
+        order_id: order._id,
+        type: 'MILESTONE_COMPLETED',
+        message: `Proof uploaded for milestone "${milestone.name}" in order ${order.order_id}. Awaiting verification.`,
+        read: false
+      });
+    }
+
+    // Notify LENDER if exists
+    if (order.lender_id) {
+      await Notification.create({
+        user_id: order.lender_id,
+        order_id: order._id,
+        type: 'MILESTONE_COMPLETED',
+        message: `Proof uploaded for milestone "${milestone.name}" in order ${order.order_id}. Awaiting admin verification.`,
+        read: false
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Proof uploaded successfully. Awaiting admin verification.',
+      milestone: {
+        id: milestone._id,
+        name: milestone.name,
+        proof_file_path: milestone.proof_file_path,
+        proof_verification_status: milestone.proof_verification_status,
+        proof_url: `/uploads/proofs/${path.basename(milestone.proof_file_path)}`
+      }
+    });
+  } catch (error) {
+    // Delete uploaded file on error
+    if (req.file && req.file.path) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Error uploading proof',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Verify proof for milestone (ADMIN only)
+ * @route   PATCH /api/milestones/:id/verify-proof
+ * @access  Private (ADMIN only)
+ * 
+ * Proof Verification Workflow:
+ * 1. ADMIN reviews uploaded proof file
+ * 2. ADMIN verifies or rejects proof
+ * 3. If verified, milestone can be completed
+ * 4. If rejected, supplier must upload new proof
+ * 
+ * Validations:
+ * - Only ADMIN can verify proof
+ * - Proof must be uploaded (proof_file_path must exist)
+ * - Proof must be in PENDING verification status
+ */
+exports.verifyProof = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { verified, rejection_reason } = req.body; // verified: true/false
+
+    // Validate milestone ID format
+    if (!id || id.length !== 24) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid milestone ID'
+      });
+    }
+
+    // Validate verified field
+    if (typeof verified !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'verified field is required and must be true or false'
+      });
+    }
+
+    // Find milestone with order details
+    const milestone = await Milestone.findById(id).populate('order_id', 'order_id created_by lender_id');
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        message: 'Milestone not found'
+      });
+    }
+
+    // Check if proof has been uploaded
+    if (!milestone.proof_file_path) {
+      return res.status(400).json({
+        success: false,
+        message: 'No proof file uploaded for this milestone. Supplier must upload proof first.'
+      });
+    }
+
+    // Check if proof is already verified
+    if (milestone.proof_verification_status === 'VERIFIED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Proof is already verified for this milestone.'
+      });
+    }
+
+    // Update verification status
+    if (verified) {
+      milestone.proof_verification_status = 'VERIFIED';
+      milestone.proof_verified_at = new Date();
+      milestone.proof_verified_by = req.user.id;
+    } else {
+      milestone.proof_verification_status = 'REJECTED';
+      milestone.proof_verified_at = new Date();
+      milestone.proof_verified_by = req.user.id;
+      // Optionally delete rejected proof file
+      // For now, we keep it for audit trail
+    }
+
+    await milestone.save();
+
+    // Create notification for supplier
+    await Notification.create({
+      user_id: milestone.order_id.created_by,
+      order_id: milestone.order_id._id,
+      type: 'MILESTONE_COMPLETED',
+      message: verified 
+        ? `Proof verified for milestone "${milestone.name}" in order ${milestone.order_id.order_id}. You can now complete this milestone.`
+        : `Proof rejected for milestone "${milestone.name}" in order ${milestone.order_id.order_id}. ${rejection_reason || 'Please upload a new proof.'}`,
+      read: false
+    });
+
+    res.status(200).json({
+      success: true,
+      message: verified ? 'Proof verified successfully.' : 'Proof rejected.',
+      milestone: {
+        id: milestone._id,
+        name: milestone.name,
+        proof_verification_status: milestone.proof_verification_status,
+        proof_verified_at: milestone.proof_verified_at,
+        proof_verified_by: milestone.proof_verified_by
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error verifying proof',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Complete milestone (only after proof verification)
  * @route   PATCH /api/milestones/:id/complete
- * @access  Private (SUPPLIER submits proof, ADMIN approves)
+ * @access  Private (ADMIN only - after proof verification)
  * 
  * Milestone Completion Workflow:
  * 1. SUPPLIER submits proof of completion (invoice, delivery note, etc.)
@@ -116,21 +378,12 @@ exports.getOrderMilestones = async (req, res) => {
 exports.completeMilestone = async (req, res) => {
   try {
     const { id } = req.params;
-    const { proof, approved_by } = req.body;
 
     // Validate milestone ID format
     if (!id || id.length !== 24) {
       return res.status(400).json({
         success: false,
         message: 'Invalid milestone ID'
-      });
-    }
-
-    // Validate required fields
-    if (!proof) {
-      return res.status(400).json({
-        success: false,
-        message: 'Proof of completion is required (invoice, delivery note, etc.)'
       });
     }
 
@@ -168,6 +421,22 @@ exports.completeMilestone = async (req, res) => {
         message: `Cannot complete milestone. Current status: ${milestone.status}. Only PENDING milestones can be completed.`,
         allowed_status: MILESTONE_STATUS.PENDING,
         current_status: milestone.status
+      });
+    }
+
+    // Require proof verification before completion
+    if (!milestone.proof_file_path) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot complete milestone. Proof file must be uploaded first.'
+      });
+    }
+
+    if (milestone.proof_verification_status !== 'VERIFIED') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot complete milestone. Proof must be verified by admin first. Current verification status: ${milestone.proof_verification_status || 'PENDING'}`,
+        proof_verification_status: milestone.proof_verification_status
       });
     }
 

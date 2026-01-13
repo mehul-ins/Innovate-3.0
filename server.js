@@ -24,6 +24,9 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 // Serve static assets (CSS, client JS, images)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve uploaded proof files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/order'));

@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { getOrderMilestones, completeMilestone } = require('../controllers/milestoneController');
-const { protect } = require('../middleware/auth');
+const { getOrderMilestones, uploadProof, verifyProof, completeMilestone } = require('../controllers/milestoneController');
+const { protect, supplierOnly, adminOnly } = require('../middleware/auth');
+const { uploadProof: uploadMiddleware } = require('../middleware/upload');
 
 /**
  * Milestone Routes
@@ -21,8 +22,14 @@ const { protect } = require('../middleware/auth');
 // Get all milestones for an order
 router.get('/:orderId', protect, getOrderMilestones);
 
-// Complete milestone (submit proof and approve)
+// Upload proof file for milestone (SUPPLIER only)
+router.post('/:id/upload-proof', protect, supplierOnly, uploadMiddleware, uploadProof);
+
+// Verify proof for milestone (ADMIN only)
+router.patch('/:id/verify-proof', protect, adminOnly, verifyProof);
+
+// Complete milestone (ADMIN only - after proof verification)
 // Creates RELEASE transaction and unlocks next milestone
-router.patch('/:id/complete', protect, completeMilestone);
+router.patch('/:id/complete', protect, adminOnly, completeMilestone);
 
 module.exports = router;

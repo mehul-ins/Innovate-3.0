@@ -1,6 +1,7 @@
 <section id="dashboard-section">
   <% if (role === 'SUPPLIER') { %>
     <%- include('partials/supplierOrderForm') %>
+    <%- include('partials/supplierMilestones') %>
   <% } else if (role === 'LENDER') { %>
     <%- include('partials/lenderDashboard') %>
   <% } else if (role === 'ADMIN') { %>

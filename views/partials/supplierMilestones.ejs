@@ -1,0 +1,212 @@
+<div class="panel">
+  <h2>My Orders & Milestones</h2>
+  <div id="supplier-milestones">
+    <p>Loading milestones...</p>
+  </div>
+</div>
+
+<!-- Proof Upload Modal -->
+<div id="proof-upload-modal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 500px;">
+    <h2>Upload Proof</h2>
+    <div id="upload-milestone-info"></div>
+    <form id="proof-upload-form" enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Proof File (PDF, JPG, PNG, DOC, DOCX):</label>
+        <input type="file" id="proof-file" name="proof" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required />
+        <small style="color: #666; font-size: 0.85rem;">Max file size: 10MB</small>
+      </div>
+      <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+        <button type="submit" class="btn-success" style="flex: 1;">Upload Proof</button>
+        <button type="button" onclick="closeProofUploadModal()" style="flex: 1;">Cancel</button>
+      </div>
+      <div id="upload-error" class="error" style="margin-top: 0.5rem;"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const API_BASE = '/api';
+    let currentMilestoneId = null;
+
+    async function loadSupplierMilestones() {
+      const container = document.getElementById('supplier-milestones');
+      if (!container) return;
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        container.innerHTML = '<p class="error">Please login as supplier.</p>';
+        return;
+      }
+
+      try {
+        // Get all orders
+        const ordersRes = await fetch(`${API_BASE}/orders`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const ordersData = await ordersRes.json();
+
+        if (!ordersRes.ok || !ordersData.orders) {
+          container.innerHTML = '<p class="error">Error loading orders.</p>';
+          return;
+        }
+
+        // Filter orders created by current supplier
+        const userRes = await fetch(`${API_BASE}/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const userData = await userRes.json();
+        const supplierId = userData.user?.id;
+
+        const supplierOrders = ordersData.orders.filter(o => o.created_by?.id === supplierId);
+
+        if (supplierOrders.length === 0) {
+          container.innerHTML = '<p class="empty-state">No orders found. Create an order to get started.</p>';
+          return;
+        }
+
+        // Load milestones for each order
+        let html = '';
+        for (const order of supplierOrders) {
+          try {
+            const milestonesRes = await fetch(`${API_BASE}/orders/${order.id}/milestones`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const milestonesData = await milestonesRes.json();
+
+            if (milestonesRes.ok && milestonesData.milestones) {
+              html += `
+                <div class="order-card" style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px;">
+                  <h3 style="margin-top: 0;">Order: ${order.order_id}</h3>
+                  <p><strong>Buyer:</strong> ${order.buyer_name} | <strong>Value:</strong> $${order.value.toLocaleString()}</p>
+                  <p><strong>Status:</strong> <span class="status-badge status-${order.status.toLowerCase().replace(/_/g, '-')}">${order.status.replace(/_/g, ' ')}</span></p>
+                  
+                  <div style="margin-top: 1rem;">
+                    <h4>Milestones:</h4>
+                    ${milestonesData.milestones.map(m => `
+                      <div style="margin: 0.75rem 0; padding: 0.75rem; background: #f8f9fa; border-radius: 4px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                          <div>
+                            <strong>${m.name}</strong> (${m.percentage}% - $${m.amount.toLocaleString()})
+                            <br>
+                            <span class="status-badge status-${m.status.toLowerCase()}" style="margin-top: 0.25rem; display: inline-block;">${m.status}</span>
+                            ${m.proof_verification_status ? `<span class="status-badge" style="margin-left: 0.5rem; background: ${m.proof_verification_status === 'VERIFIED' ? '#d4edda' : m.proof_verification_status === 'REJECTED' ? '#f8d7da' : '#fff3cd'}; color: ${m.proof_verification_status === 'VERIFIED' ? '#155724' : m.proof_verification_status === 'REJECTED' ? '#721c24' : '#856404'};">${m.proof_verification_status}</span>` : ''}
+                          </div>
+                        </div>
+                        ${m.status === 'PENDING' ? `
+                          <div style="margin-top: 0.5rem;">
+                            ${m.proof_file_path ? `
+                              <p style="font-size: 0.85rem; color: #666;">
+                                Proof uploaded: <a href="${m.proof_url}" target="_blank">View</a>
+                                ${m.proof_verification_status === 'PENDING' ? ' (Awaiting verification)' : ''}
+                                ${m.proof_verification_status === 'REJECTED' ? ' (Rejected - please upload new proof)' : ''}
+                              </p>
+                            ` : ''}
+                            <button onclick="openProofUploadModal('${m.id}', '${m.name}')" class="btn-success" style="margin-top: 0.5rem;">
+                              ${m.proof_file_path ? 'Re-upload Proof' : 'Upload Proof'}
+                            </button>
+                          </div>
+                        ` : ''}
+                        ${m.status === 'COMPLETED' ? `
+                          <p style="font-size: 0.85rem; color: #28a745; margin-top: 0.5rem;">
+                            ✓ Completed - Released: $${m.released_amount.toLocaleString()}
+                            ${m.proof_file_path ? `| <a href="${m.proof_url}" target="_blank">View Proof</a>` : ''}
+                          </p>
+                        ` : ''}
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }
+          } catch (err) {
+            console.error(`Error loading milestones for order ${order.id}:`, err);
+          }
+        }
+
+        container.innerHTML = html || '<p class="empty-state">No milestones found.</p>';
+      } catch (err) {
+        console.error('Error loading milestones:', err);
+        container.innerHTML = '<p class="error">Error loading milestones.</p>';
+      }
+    }
+
+    function openProofUploadModal(milestoneId, milestoneName) {
+      currentMilestoneId = milestoneId;
+      const modal = document.getElementById('proof-upload-modal');
+      const infoEl = document.getElementById('upload-milestone-info');
+      const errorEl = document.getElementById('upload-error');
+      
+      errorEl.textContent = '';
+      infoEl.innerHTML = `<p><strong>Milestone:</strong> ${milestoneName}</p>`;
+      modal.style.display = 'flex';
+    }
+
+    function closeProofUploadModal() {
+      document.getElementById('proof-upload-modal').style.display = 'none';
+      document.getElementById('proof-upload-form').reset();
+      currentMilestoneId = null;
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      loadSupplierMilestones();
+
+      const form = document.getElementById('proof-upload-form');
+      if (form) {
+        form.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const errorEl = document.getElementById('upload-error');
+          errorEl.textContent = '';
+
+          const fileInput = document.getElementById('proof-file');
+          if (!fileInput.files[0]) {
+            errorEl.textContent = 'Please select a file.';
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append('proof', fileInput.files[0]);
+
+          const token = localStorage.getItem('authToken');
+          if (!token) {
+            errorEl.textContent = 'Please login first.';
+            return;
+          }
+
+          try {
+            const res = await fetch(`${API_BASE}/milestones/${currentMilestoneId}/upload-proof`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              },
+              body: formData
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+              alert('Proof uploaded successfully! Awaiting admin verification.');
+              closeProofUploadModal();
+              loadSupplierMilestones();
+            } else {
+              errorEl.textContent = data.message || 'Failed to upload proof.';
+            }
+          } catch (err) {
+            console.error('Error uploading proof:', err);
+            errorEl.textContent = 'Error connecting to server.';
+          }
+        });
+      }
+
+      window.onclick = function(event) {
+        const modal = document.getElementById('proof-upload-modal');
+        if (event.target === modal) {
+          closeProofUploadModal();
+        }
+      };
+    });
+
+    window.openProofUploadModal = openProofUploadModal;
+    window.closeProofUploadModal = closeProofUploadModal;
+  })();
+</script>

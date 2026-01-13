@@ -6,9 +6,49 @@
 </div>
 
 <div class="panel">
+  <h2>Milestone Proofs Pending Verification</h2>
+  <div id="admin-proofs-pending">
+    <p>Loading proofs...</p>
+  </div>
+</div>
+
+<div class="panel">
   <h2>Transaction Ledger</h2>
   <div id="admin-ledger">
     <p>Loading ledger...</p>
+  </div>
+</div>
+
+<!-- Proof Verification Modal -->
+<div id="proof-verify-modal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 700px;">
+    <h2>Verify Proof</h2>
+    <div id="verify-milestone-info"></div>
+    <div id="verify-proof-preview" style="margin: 1rem 0;"></div>
+    <form id="proof-verify-form">
+      <div class="form-group">
+        <label>Verification Decision:</label>
+        <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+          <label style="display: flex; align-items: center; gap: 0.5rem;">
+            <input type="radio" name="verified" value="true" required />
+            <span>✓ Verify</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.5rem;">
+            <input type="radio" name="verified" value="false" required />
+            <span>✗ Reject</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group" id="rejection-reason-group" style="display: none;">
+        <label>Rejection Reason (optional):</label>
+        <textarea id="rejection-reason" rows="3" placeholder="Explain why this proof is being rejected..."></textarea>
+      </div>
+      <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+        <button type="submit" class="btn-success" style="flex: 1;">Submit Verification</button>
+        <button type="button" onclick="closeProofVerifyModal()" style="flex: 1;">Cancel</button>
+      </div>
+      <div id="verify-error" class="error" style="margin-top: 0.5rem;"></div>
+    </form>
   </div>
 </div>
 
@@ -200,18 +240,193 @@
       }
     }
 
+    async function loadPendingProofs() {
+      const container = document.getElementById('admin-proofs-pending');
+      if (!container) return;
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        container.innerHTML = '<p class="error">Please login as admin.</p>';
+        return;
+      }
+
+      try {
+        const ordersRes = await fetch(`${API_BASE}/orders`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const ordersData = await ordersRes.json();
+
+        if (!ordersRes.ok || !ordersData.orders) {
+          container.innerHTML = '<p class="error">Error loading orders.</p>';
+          return;
+        }
+
+        // Collect all milestones with pending proofs
+        const pendingProofs = [];
+        for (const order of ordersData.orders) {
+          try {
+            const milestonesRes = await fetch(`${API_BASE}/orders/${order.id}/milestones`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const milestonesData = await milestonesRes.json();
+            if (milestonesRes.ok && milestonesData.milestones) {
+              milestonesData.milestones.forEach(m => {
+                if (m.proof_file_path && m.proof_verification_status === 'PENDING') {
+                  pendingProofs.push({ ...m, order_id: order.order_id, order_value: order.value });
+                }
+              });
+            }
+          } catch (err) {
+            console.error(`Error loading milestones for order ${order.id}:`, err);
+          }
+        }
+
+        if (pendingProofs.length === 0) {
+          container.innerHTML = '<p class="empty-state">No proofs pending verification.</p>';
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="margin-bottom: 1rem;">
+            <p><strong>${pendingProofs.length} proof${pendingProofs.length !== 1 ? 's' : ''} awaiting verification</strong></p>
+          </div>
+          ${pendingProofs.map(proof => `
+            <div class="order-card" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; background: #fff3cd;">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                  <h4 style="margin: 0;">${proof.name}</h4>
+                  <p style="margin: 0.25rem 0;"><strong>Order:</strong> ${proof.order_id} | <strong>Amount:</strong> $${proof.amount.toLocaleString()}</p>
+                  <p style="margin: 0.25rem 0; font-size: 0.85rem;">
+                    <a href="${proof.proof_url}" target="_blank" style="color: #007bff;">View Proof File</a>
+                  </p>
+                </div>
+                <button onclick="openProofVerifyModal('${proof.id}', '${proof.name}', '${proof.order_id}', '${proof.proof_url}')" class="btn-success">
+                  Verify Proof
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        `;
+      } catch (err) {
+        console.error('Error loading pending proofs:', err);
+        container.innerHTML = '<p class="error">Error loading proofs.</p>';
+      }
+    }
+
+    let currentVerifyMilestoneId = null;
+
+    function openProofVerifyModal(milestoneId, milestoneName, orderId, proofUrl) {
+      currentVerifyMilestoneId = milestoneId;
+      const modal = document.getElementById('proof-verify-modal');
+      const infoEl = document.getElementById('verify-milestone-info');
+      const previewEl = document.getElementById('verify-proof-preview');
+      const errorEl = document.getElementById('verify-error');
+      
+      errorEl.textContent = '';
+      infoEl.innerHTML = `
+        <p><strong>Milestone:</strong> ${milestoneName}</p>
+        <p><strong>Order:</strong> ${orderId}</p>
+      `;
+      
+      // Show proof preview
+      const fileExt = proofUrl.split('.').pop().toLowerCase();
+      if (['jpg', 'jpeg', 'png'].includes(fileExt)) {
+        previewEl.innerHTML = `<img src="${proofUrl}" style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px;" />`;
+      } else {
+        previewEl.innerHTML = `<iframe src="${proofUrl}" style="width: 100%; height: 400px; border: 1px solid #ddd; border-radius: 4px;"></iframe>`;
+      }
+      
+      modal.style.display = 'flex';
+    }
+
+    function closeProofVerifyModal() {
+      document.getElementById('proof-verify-modal').style.display = 'none';
+      document.getElementById('proof-verify-form').reset();
+      document.getElementById('rejection-reason-group').style.display = 'none';
+      currentVerifyMilestoneId = null;
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
       loadPendingLockOrders();
       loadLedger();
+      loadPendingProofs();
+
+      // Handle verification form
+      const verifyForm = document.getElementById('proof-verify-form');
+      if (verifyForm) {
+        // Show/hide rejection reason based on radio selection
+        verifyForm.querySelectorAll('input[name="verified"]').forEach(radio => {
+          radio.addEventListener('change', function() {
+            const rejectionGroup = document.getElementById('rejection-reason-group');
+            if (this.value === 'false') {
+              rejectionGroup.style.display = 'block';
+            } else {
+              rejectionGroup.style.display = 'none';
+            }
+          });
+        });
+
+        verifyForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const errorEl = document.getElementById('verify-error');
+          errorEl.textContent = '';
+
+          const verified = document.querySelector('input[name="verified"]:checked')?.value === 'true';
+          const rejectionReason = document.getElementById('rejection-reason').value.trim();
+
+          const token = localStorage.getItem('authToken');
+          if (!token) {
+            errorEl.textContent = 'Please login first.';
+            return;
+          }
+
+          try {
+            const res = await fetch(`${API_BASE}/milestones/${currentVerifyMilestoneId}/verify-proof`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                verified: verified,
+                rejection_reason: verified ? null : (rejectionReason || null)
+              })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+              alert(verified ? 'Proof verified successfully!' : 'Proof rejected.');
+              closeProofVerifyModal();
+              loadPendingProofs();
+            } else {
+              errorEl.textContent = data.message || 'Failed to verify proof.';
+            }
+          } catch (err) {
+            console.error('Error verifying proof:', err);
+            errorEl.textContent = 'Error connecting to server.';
+          }
+        });
+      }
 
       // Refresh every 30 seconds
       setInterval(() => {
         loadPendingLockOrders();
         loadLedger();
+        loadPendingProofs();
       }, 30000);
+
+      // Close modal on outside click
+      window.onclick = function(event) {
+        const modal = document.getElementById('proof-verify-modal');
+        if (event.target === modal) {
+          closeProofVerifyModal();
+        }
+      };
     });
 
-    // Expose function globally for onclick handlers
+    // Expose functions globally for onclick handlers
     window.lockFunds = lockFunds;
+    window.openProofVerifyModal = openProofVerifyModal;
+    window.closeProofVerifyModal = closeProofVerifyModal;
   })();
 </script>
