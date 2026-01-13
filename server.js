@@ -17,6 +17,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/orders', require('./routes/order'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -24,7 +25,8 @@ app.get('/', (req, res) => {
     message: 'Hackathon Backend API',
     version: '1.0.0',
     endpoints: {
-      auth: '/api/auth'
+      auth: '/api/auth',
+      orders: '/api/orders'
     }
   });
 });
