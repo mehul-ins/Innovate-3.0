@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supply Chain Financing - Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Section -->
+    <div id="login-section">
+        <div class="container">
+            <h1>Supply Chain Financing Dashboard</h1>
+            <form id="login-form">
+                <h2>Login</h2>
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="login-email" required>
+                </div>
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit">Login</button>
+                <div id="login-error" class="error"></div>
+            </form>
+            
+            <div class="quick-login">
+                <h3>Quick Login (Demo)</h3>
+                <button onclick="quickLogin('admin@test.com', 'password123')">Login as ADMIN</button>
+                <button onclick="quickLogin('supplier@test.com', 'password123')">Login as SUPPLIER</button>
+                <button onclick="quickLogin('lender@test.com', 'password123')">Login as LENDER</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboard-section" style="display: none;">
+        <div class="header">
+            <h1>Supply Chain Financing Dashboard</h1>
+            <div class="user-info">
+                <span id="user-role"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- Action Panel -->
+            <div id="action-panel" class="panel">
+                <h2>Actions</h2>
+                <div id="action-buttons"></div>
+            </div>
+
+            <!-- Orders Panel -->
+            <div class="panel">
+                <h2>Orders</h2>
+                <button onclick="refreshOrders()">🔄 Refresh</button>
+                <div id="orders-container"></div>
+            </div>
+
+            <!-- Create Order Modal (SUPPLIER only) -->
+            <div id="create-order-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h2>Create New Order</h2>
+                    <form id="create-order-form">
+                        <div class="form-group">
+                            <label>Order ID:</label>
+                            <input type="text" id="order-id" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Buyer Name:</label>
+                            <input type="text" id="buyer-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Order Value ($):</label>
+                            <input type="number" id="order-value" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Date:</label>
+                            <input type="date" id="delivery-date" required>
+                        </div>
+                        <button type="submit">Create Order</button>
+                        <button type="button" onclick="closeModal('create-order-modal')">Cancel</button>
+                    </form>
+                    <div id="create-order-error" class="error"></div>
+                </div>
+            </div>
+
+            <!-- Complete Milestone Modal -->
+            <div id="complete-milestone-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h2>Complete Milestone</h2>
+                    <div id="milestone-info"></div>
+                    <form id="complete-milestone-form">
+                        <div class="form-group">
+                            <label>Proof of Completion:</label>
+                            <textarea id="milestone-proof" required rows="4"></textarea>
+                        </div>
+                        <button type="submit">Complete Milestone</button>
+                        <button type="button" onclick="closeModal('complete-milestone-modal')">Cancel</button>
+                    </form>
+                    <div id="complete-milestone-error" class="error"></div>
+                </div>
+            </div>
+
+            <!-- Order Details Modal -->
+            <div id="order-details-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h2>Order Details</h2>
+                    <div id="order-details-content"></div>
+                    <button onclick="closeModal('order-details-modal')">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

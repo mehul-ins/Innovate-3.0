@@ -15,6 +15,9 @@ app.use(cors()); // Enable CORS for all routes
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
+// Serve static frontend files (Phase 8)
+app.use(express.static('public'));
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/order'));
@@ -22,7 +25,7 @@ app.use('/api/milestones', require('./routes/milestone'));
 app.use('/api/transactions', require('./routes/transaction'));
 
 // Test route
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
   res.json({
     message: 'Hackathon Backend API',
     version: '1.0.0',
