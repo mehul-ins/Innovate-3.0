@@ -52,22 +52,26 @@ exports.getOrderMilestones = async (req, res) => {
     if (milestonesFromCollection.length === 0 && order.milestones && order.milestones.length > 0) {
       console.log('Using Order.milestones array (no Milestone documents found)');
       // Convert Order.milestones array to milestone objects
-      milestones = order.milestones.map((m, idx) => ({
-        _id: null,
-        order_id: orderId,
-        name: m.name,
-        amount: m.amount || 0,
-        percentage: m.percentage || 0,
-        status: 'PENDING',
-        released_amount: 0,
-        proof: m.proof || null,
-        proof_file_path: null,
-        proof_verification_status: null,
-        proof_verified_at: null,
-        proof_verified_by: null,
-        order: idx + 1,
-        createdAt: new Date()
-      }));
+      milestones = order.milestones.map((m, idx) => {
+        // Calculate amount if missing (for backward compatibility with existing orders)
+        const amount = m.amount || Math.round(order.value * (m.percentage / 100));
+        return {
+          _id: null,
+          order_id: orderId,
+          name: m.name,
+          amount: amount,
+          percentage: m.percentage || 0,
+          status: m.status || 'PENDING',
+          released_amount: m.released_amount || 0,
+          proof: m.proof || null,
+          proof_file_path: null,
+          proof_verification_status: null,
+          proof_verified_at: null,
+          proof_verified_by: null,
+          order: idx + 1,
+          createdAt: new Date()
+        };
+      });
     }
 
     if (!milestones || milestones.length === 0) {
@@ -79,16 +83,21 @@ exports.getOrderMilestones = async (req, res) => {
       });
     }
 
-    // Calculate milestone statistics
-    const totalAmount = milestones.reduce((sum, m) => sum + (m.amount || 0), 0);
+    // Calculate milestone statistics - need to account for missing amounts
+    const totalAmount = milestones.reduce((sum, m) => {
+      const amount = m.amount || Math.round(order.value * (m.percentage / 100));
+      return sum + (amount || 0);
+    }, 0);
     const releasedAmount = milestones.reduce((sum, m) => sum + (m.released_amount || 0), 0);
     const completedMilestones = milestones.filter(m => m.status === 'COMPLETED').length;
 
     // Debug logging to see proof data
     console.log('Final milestones count:', milestones.length);
+    console.log('Completed milestones count:', completedMilestones);
     milestones.forEach((m, idx) => {
       const proof = m.proof;
-      console.log(`Milestone ${m.order} (${m.name}): has proof =`, !!proof, proof ? `status=${proof.status}` : '');
+      const amount = m.amount || Math.round(order.value * (m.percentage / 100));
+      console.log(`Milestone ${m.order} (${m.name}): status=${m.status}, amount=${amount}, has proof =`, !!proof, proof ? `status=${proof.status}` : '');
     });
     console.log('================================================\n');
 
@@ -108,10 +117,13 @@ exports.getOrderMilestones = async (req, res) => {
           proofData = order.milestones[m.order - 1].proof;
         }
         
+        // Calculate amount if missing (for backward compatibility)
+        const amount = m.amount || Math.round(order.value * (m.percentage / 100));
+        
         return {
           id: m._id || `milestone-${m.order}`,
           name: m.name,
-          amount: m.amount,
+          amount: amount,
           percentage: m.percentage,
           status: m.status,
           released_amount: m.released_amount,

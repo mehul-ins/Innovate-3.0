@@ -80,7 +80,7 @@ const orderSchema = new mongoose.Schema(
       index: true
     },
     // Supplier-defined milestone breakdown (dynamic milestones)
-    // Structure: [{ name: string, percentage: number, description: string, proof: {...}, ... }, ...]
+    // Structure: [{ name: string, percentage: number, amount: number, status: string, description: string, proof: {...}, ... }, ...]
     // Percentages are validated against platform rules
     milestones: [
       {
@@ -93,6 +93,24 @@ const orderSchema = new mongoose.Schema(
           required: [true, 'Milestone percentage is required'],
           min: [0, 'Percentage must be positive'],
           max: [100, 'Percentage cannot exceed 100']
+        },
+        // Calculated amount based on order value and percentage
+        amount: {
+          type: Number,
+          default: 0,
+          min: [0, 'Amount must be positive']
+        },
+        // Milestone status: LOCKED (awaiting previous), PENDING (ready for work), COMPLETED (approved)
+        status: {
+          type: String,
+          enum: ['LOCKED', 'PENDING', 'COMPLETED', 'FROZEN', 'PAUSED'],
+          default: 'PENDING'
+        },
+        // Amount released/transferred when milestone completed
+        released_amount: {
+          type: Number,
+          default: 0,
+          min: [0, 'Released amount must be positive']
         },
         description: {
           type: String,

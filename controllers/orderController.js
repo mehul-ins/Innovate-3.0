@@ -71,8 +71,9 @@ exports.createOrder = async (req, res) => {
       percentage: Number(m.percentage),
       // Calculate amount based on percentage of total order value
       amount: Math.round(numericValue * (Number(m.percentage) / 100)),
-      // First milestone is PENDING (available for work), rest are LOCKED (waiting for previous completion)
-      status: idx === 0 ? 'PENDING' : 'LOCKED'
+      // ALL milestones start as LOCKED until admin locks funds
+      // Admin will unlock first milestone when they lock funds
+      status: 'LOCKED'
     }));
 
     const milestonesValidation = Order.validateMilestones(processedMilestones);
@@ -472,7 +473,7 @@ exports.lenderApproveOrder = async (req, res) => {
       console.log('ERROR: Wrong order status for approval');
       return res.status(400).json({
         success: false,
-        message: `Cannot approve order. Current status: ${order.status}. Only PENDING_LENDER_APPROVAL orders can be approved by lender.`,
+        message: `Current status: ${order.status}.`,
         currentStatus: order.status
       });
     }
@@ -691,9 +692,20 @@ exports.lockFunds = async (req, res) => {
     // Lock funds and unlock ONLY the first milestone's funds (stepwise release)
     order.funds_locked = true;
     order.current_unlocked_milestone = 1; // Only milestone 1 funds are available initially
+    
+    // CRITICAL: Set first milestone to PENDING (uploadable), rest to LOCKED
+    if (order.milestones && order.milestones.length > 0) {
+      order.milestones[0].status = 'PENDING'; // First milestone available for work/upload
+      for (let i = 1; i < order.milestones.length; i++) {
+        order.milestones[i].status = 'LOCKED'; // Rest locked until previous completes
+      }
+      order.markModified('milestones'); // Tell Mongoose subdocument changed
+    }
+    
     await order.save();
 
     console.log('[lockFunds] SUCCESS - Funds locked for order:', order.order_id, '| Unlocked milestone:', order.current_unlocked_milestone);
+    console.log('[lockFunds] Milestone statuses:', order.milestones.map((m, i) => `M${i + 1}:${m.status}`).join(', '));
 
     // Create LOCK transaction in mock escrow ledger
     // This records that the full order value is now reserved in escrow

@@ -135,17 +135,23 @@ exports.approveProof = async (req, res) => {
         const { approvalNotes } = req.body;
         const milestoneIdx = parseInt(milestoneIndex);
 
+        console.log(`[approveProof] START - Order ID: ${orderId}, Milestone Index: ${milestoneIdx}`);
+
         // Find the order
         const order = await Order.findById(orderId);
         if (!order) {
+            console.log('[approveProof] ERROR - Order not found');
             return res.status(404).json({
                 success: false,
                 message: 'Order not found'
             });
         }
 
+        console.log(`[approveProof] Order found: ${order.order_id}, Milestones: ${order.milestones.length}`);
+
         // Verify milestone index is valid
         if (milestoneIdx < 0 || milestoneIdx >= order.milestones.length) {
+            console.log(`[approveProof] ERROR - Invalid milestone index: ${milestoneIdx} (total: ${order.milestones.length})`);
             return res.status(400).json({
                 success: false,
                 message: 'Invalid milestone index'
@@ -153,14 +159,18 @@ exports.approveProof = async (req, res) => {
         }
 
         const milestone = order.milestones[milestoneIdx];
+        console.log(`[approveProof] Milestone: name=${milestone.name}, status=${milestone.status}, hasProof=${!!milestone.proof}, percentage=${milestone.percentage}, amount=${milestone.amount}`);
 
         // Check if proof exists
         if (!milestone.proof || !milestone.proof.filename) {
+            console.log('[approveProof] ERROR - No proof found for this milestone');
             return res.status(400).json({
                 success: false,
                 message: 'No proof found for this milestone'
             });
         }
+
+        console.log(`[approveProof] Proof found: filename=${milestone.proof.filename}, status=${milestone.proof.status}`);
 
         // Update proof status
         milestone.proof.status = 'APPROVED';
@@ -168,8 +178,13 @@ exports.approveProof = async (req, res) => {
         milestone.proof.approvedBy = req.user.id;
         milestone.proof.approvalNotes = approvalNotes || '';
 
-        // Mark milestone as completed
+        // Use the milestone amount directly (already calculated and stored)
+        // Fallback: calculate if amount is missing (for old orders)
+        const milestoneAmount = milestone.amount || Math.round(order.value * (milestone.percentage / 100));
+
+        // Mark milestone as completed and set released amount
         milestone.status = 'COMPLETED';
+        milestone.released_amount = milestoneAmount; // CRITICAL: Set the released amount for UI display
 
         // Unlock next milestone for upload (stepwise fund release)
         if (milestoneIdx + 1 < order.milestones.length) {
@@ -180,24 +195,50 @@ exports.approveProof = async (req, res) => {
 
         // Mark milestones array as modified so Mongoose will save it
         order.markModified('milestones');
-
-        // Use the milestone amount directly (already calculated and stored)
-        const milestoneAmount = milestone.amount;
+        
+        // DEBUG: Log before save
+        console.log(`[approveProof] BEFORE SAVE:`, JSON.stringify({
+            orderId: order._id,
+            milestoneIdx: milestoneIdx,
+            milestoneStatus: order.milestones[milestoneIdx].status,
+            proofStatus: order.milestones[milestoneIdx].proof.status,
+            releasedAmount: order.milestones[milestoneIdx].released_amount,
+            nextMilestoneStatus: milestoneIdx + 1 < order.milestones.length ? order.milestones[milestoneIdx + 1].status : 'N/A'
+        }));
+        
+        console.log(`[approveProof] Creating transaction - amount: ${milestoneAmount}, order_id: ${order._id}, type: ${TRANSACTION_TYPE.RELEASE}`);
 
         // Create transaction for fund release
-        const transaction = await Transaction.create({
-            order_id: order._id,
-            type: TRANSACTION_TYPE.RELEASE,
-            amount: milestoneAmount,
-            description: `Milestone "${milestone.name}" completed and approved. Funds released to supplier.`,
-            status: 'RECORDED',
-            milestone_index: milestoneIdx
-        });
-
-        console.log(`[approveProof] Proof approved and funds released for milestone ${milestoneIdx + 1}`);
+        let transaction;
+        try {
+            transaction = await Transaction.create({
+                order_id: order._id,
+                type: TRANSACTION_TYPE.RELEASE,
+                amount: milestoneAmount,
+                description: `Milestone "${milestone.name}" completed and approved. Funds released to supplier.`,
+                status: 'RECORDED',
+                milestone_index: milestoneIdx
+            });
+            console.log(`[approveProof] Transaction created successfully: ${transaction._id}`);
+        } catch (txError) {
+            console.error(`[approveProof] ERROR creating transaction:`, txError.message);
+            console.error(`[approveProof] Transaction error stack:`, txError.stack);
+            throw txError; // Re-throw to be caught by outer catch
+        }
 
         // Save order with updated proof status
-        await order.save();
+        const savedOrder = await order.save();
+        
+        // DEBUG: Log after save
+        console.log(`[approveProof] AFTER SAVE:`, JSON.stringify({
+            orderId: savedOrder._id,
+            milestoneIdx: milestoneIdx,
+            milestoneStatus: savedOrder.milestones[milestoneIdx].status,
+            proofStatus: savedOrder.milestones[milestoneIdx].proof.status,
+            releasedAmount: savedOrder.milestones[milestoneIdx].released_amount,
+            nextMilestoneStatus: milestoneIdx + 1 < savedOrder.milestones.length ? savedOrder.milestones[milestoneIdx + 1].status : 'N/A',
+            transactionId: transaction._id
+        }));
 
         // Notify supplier that funds are released
         await Notification.create({
@@ -234,6 +275,7 @@ exports.approveProof = async (req, res) => {
         });
     } catch (error) {
         console.error('[approveProof] ERROR:', error.message);
+        console.error('[approveProof] Stack:', error.stack);
         res.status(500).json({
             success: false,
             message: 'Error approving proof',
@@ -356,6 +398,55 @@ exports.getProof = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error retrieving proof',
+            error: error.message
+        });
+    }
+};
+
+/**
+ * @desc    DEBUG: Get raw milestone data from database
+ * @route   GET /api/proofs/debug/:orderId
+ * @access  Private (ADMIN only)
+ */
+exports.getDebugMilestoneData = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        // Return raw milestone data as stored in database
+        const debugData = order.milestones.map((m, idx) => ({
+            index: idx,
+            name: m.name,
+            percentage: m.percentage,
+            amount: m.amount,
+            status: m.status,
+            proof: m.proof ? {
+                filename: m.proof.filename,
+                uploadedAt: m.proof.uploadedAt,
+                status: m.proof.status,
+                approvedAt: m.proof.approvedAt,
+                approvedBy: m.proof.approvedBy
+            } : null
+        }));
+
+        res.status(200).json({
+            success: true,
+            orderId: order._id,
+            orderValue: order.value,
+            milestones: debugData
+        });
+    } catch (error) {
+        console.error('[getDebugMilestoneData] ERROR:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error retrieving debug data',
             error: error.message
         });
     }

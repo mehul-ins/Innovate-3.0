@@ -361,10 +361,12 @@ function renderOrders() {
                 <p><strong>Delivery:</strong> ${new Date(order.delivery_date).toLocaleDateString()}</p>
                 <p><strong>Funds Locked:</strong> ${order.funds_locked ? 'Yes' : 'No'}</p>
             </div>
-            <div class="order-actions">
-                ${renderOrderActions(order)}
+            <div class="order-actions" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    ${renderOrderActions(order)}
+                </div>
+                <button onclick="viewOrderDetails('${order.id}')" style="width: 100%;">View Milestones & Transactions</button>
             </div>
-            <button onclick="viewOrderDetails('${order.id}')">View Milestones & Transactions</button>
         </div>
     `).join('');
 }
@@ -415,9 +417,11 @@ async function renderAdminOrderCard(order) {
     // Debug: Log milestone data to see if proof is included
     console.log('=== ADMIN DASHBOARD MILESTONE DATA ===');
     console.log('Order ID:', order.id);
-    console.log('Milestones:', milestones);
+    console.log('Milestones count:', milestones.length);
+    console.log('Summary:', summary);
+    console.log('Completed milestones:', summary.completed);
     milestones.forEach((m, idx) => {
-        console.log(`Milestone ${idx}:`, m.name, 'has proof:', !!m.proof, 'proof status:', m.proof ? m.proof.status : 'N/A');
+        console.log(`Milestone ${idx}:`, m.name, 'status:', m.status, 'amount:', m.amount, 'has proof:', !!m.proof, 'proof status:', m.proof ? m.proof.status : 'N/A');
         if (m.proof) {
             console.log('  Proof details:', JSON.stringify(m.proof, null, 2));
         }
@@ -430,20 +434,20 @@ async function renderAdminOrderCard(order) {
     const transactions = transactionsData.transactions || [];
     
     return `
-        <div class="order-card-detailed" style="border: 2px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; background: white;">
+        <div class="order-card-detailed" style="border: 2px solid rgba(255, 138, 51, 0.3); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; background: rgba(26, 26, 26, 0.8);">
             <!-- Order Header -->
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 2px solid #e5e7eb;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 2px solid rgba(255, 138, 51, 0.2);">
                 <div>
-                    <h3 style="margin: 0 0 0.5rem 0; font-size: 1.3rem;">${order.order_id}</h3>
-                    <p style="margin: 0; color: #666;"><strong>Buyer:</strong> ${order.buyer_name}</p>
-                    <p style="margin: 0; color: #666;"><strong>Value:</strong> $${order.value.toLocaleString()}</p>
-                    <p style="margin: 0; color: #666;"><strong>Delivery:</strong> ${new Date(order.delivery_date).toLocaleDateString()}</p>
+                    <h3 style="margin: 0 0 0.5rem 0; font-size: 1.3rem; color: #ff8a33;">${order.order_id}</h3>
+                    <p style="margin: 0; color: #b8b8b8;"><strong>Buyer:</strong> ${order.buyer_name}</p>
+                    <p style="margin: 0; color: #b8b8b8;"><strong>Value:</strong> $${order.value.toLocaleString()}</p>
+                    <p style="margin: 0; color: #b8b8b8;"><strong>Delivery:</strong> ${new Date(order.delivery_date).toLocaleDateString()}</p>
                 </div>
                 <div style="text-align: right;">
                     <span class="status-badge status-${order.status.toLowerCase().replace(/_/g, '-')}" style="display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; font-weight: 600; margin-bottom: 0.5rem;">
                         ${order.status.replace(/_/g, ' ')}
                     </span>
-                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: ${order.funds_locked ? '#22c55e' : '#999'};">
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: ${order.funds_locked ? '#4caf50' : '#999'};">
                         ${order.funds_locked ? `Funds Locked (Milestone ${order.current_unlocked_milestone} available)` : 'Funds Not Locked'}
                     </p>
                 </div>
@@ -451,159 +455,159 @@ async function renderAdminOrderCard(order) {
             
             <!-- Timeline & Progress -->
             <div style="margin-bottom: 1rem;">
-                <h4 style="margin: 0 0 0.75rem 0; font-size: 1.1rem; color: #111; font-weight: 700;">Order Timeline</h4>
+                <h4 style="margin: 0 0 0.75rem 0; font-size: 1.1rem; color: #ff8a33; font-weight: 700;">Order Timeline</h4>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                    <div style="padding: 0.75rem; background: ${order.status === 'PENDING_LENDER_APPROVAL' ? '#fff3cd' : '#d4edda'}; border-radius: 4px;">
-                        <div style="font-size: 0.85rem; color: #374151; font-weight: 500;">Step 1: Lender Approval</div>
-                        <div style="font-weight: 700; margin-top: 0.25rem; color: #111;">${order.status === 'PENDING_LENDER_APPROVAL' ? 'Pending' : 'Approved'}</div>
+                    <div style="padding: 0.75rem; background: ${order.status === 'PENDING_LENDER_APPROVAL' ? 'rgba(255, 193, 7, 0.15)' : 'rgba(76, 175, 80, 0.15)'}; border-radius: 4px;">
+                        <div style="font-size: 0.85rem; color: #b8b8b8; font-weight: 500;">Step 1: Lender Approval</div>
+                        <div style="font-weight: 700; margin-top: 0.25rem; color: ${order.status === 'PENDING_LENDER_APPROVAL' ? '#ffc107' : '#4caf50'};">${order.status === 'PENDING_LENDER_APPROVAL' ? 'Pending' : 'Approved'}</div>
                     </div>
-                    <div style="padding: 0.75rem; background: ${order.funds_locked ? '#d4edda' : '#f8f9fa'}; border-radius: 4px;">
-                        <div style="font-size: 0.85rem; color: #374151; font-weight: 500;">Step 2: Admin Lock Funds</div>
-                        <div style="font-weight: 700; margin-top: 0.25rem; color: #111;">${order.funds_locked ? 'Locked' : 'Pending'}</div>
+                    <div style="padding: 0.75rem; background: ${order.funds_locked ? 'rgba(76, 175, 80, 0.15)' : 'rgba(155, 155, 155, 0.15)'}; border-radius: 4px;">
+                        <div style="font-size: 0.85rem; color: #b8b8b8; font-weight: 500;">Step 2: Admin Lock Funds</div>
+                        <div style="font-weight: 700; margin-top: 0.25rem; color: ${order.funds_locked ? '#4caf50' : '#999'};">${order.funds_locked ? 'Locked' : 'Pending'}</div>
                     </div>
-                    <div style="padding: 0.75rem; background: ${summary.completed > 0 ? '#d4edda' : '#f8f9fa'}; border-radius: 4px;">
-                        <div style="font-size: 0.85rem; color: #374151; font-weight: 500;">Step 3: Milestones</div>
-                        <div style="font-weight: 700; margin-top: 0.25rem; color: #111;">${summary.completed}/${summary.total_milestones} Completed</div>
+                    <div style="padding: 0.75rem; background: ${summary.completed > 0 ? 'rgba(76, 175, 80, 0.15)' : 'rgba(155, 155, 155, 0.15)'}; border-radius: 4px;">
+                        <div style="font-size: 0.85rem; color: #b8b8b8; font-weight: 500;">Step 3: Milestones</div>
+                        <div style="font-weight: 700; margin-top: 0.25rem; color: ${summary.completed > 0 ? '#4caf50' : '#999'};">${summary.completed}/${summary.total_milestones} Completed</div>
                     </div>
-                    <div style="padding: 0.75rem; background: ${order.status === 'COMPLETED' || order.status === 'CLOSED' ? '#d4edda' : '#f8f9fa'}; border-radius: 4px;">
-                        <div style="font-size: 0.85rem; color: #374151; font-weight: 500;">Step 4: Order Status</div>
-                        <div style="font-weight: 700; margin-top: 0.25rem; color: #111;">${order.status === 'COMPLETED' ? 'Completed' : order.status === 'CLOSED' ? 'Closed' : 'In Progress'}</div>
+                    <div style="padding: 0.75rem; background: ${order.status === 'COMPLETED' || order.status === 'CLOSED' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(155, 155, 155, 0.15)'}; border-radius: 4px;">
+                        <div style="font-size: 0.85rem; color: #b8b8b8; font-weight: 500;">Step 4: Order Status</div>
+                        <div style="font-weight: 700; margin-top: 0.25rem; color: ${order.status === 'COMPLETED' ? '#4caf50' : order.status === 'CLOSED' ? '#999' : '#999'};">${order.status === 'COMPLETED' ? 'Completed' : order.status === 'CLOSED' ? 'Closed' : 'In Progress'}</div>
                     </div>
                 </div>
             </div>
             
             <!-- Milestones Section -->
             <div style="margin-bottom: 1rem;">
-                <h4 style="margin: 0 0 0.75rem 0; font-size: 1.1rem; color: #111; font-weight: 700;">Milestones (${milestones.length})</h4>
-                <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: #e3f2fd; border-radius: 4px; border-left: 3px solid #1976d2;">
-                    <p style="margin: 0; font-size: 0.9rem; color: #1565c0;"><strong>Stepwise Fund Release:</strong> Funds for each milestone become available only after the previous milestone is completed with approved invoice.</p>
-                    ${order.funds_locked ? `<p style="margin: 0.25rem 0 0 0; font-size: 0.9rem; color: #1565c0;">Currently unlocked: <strong>Milestone ${order.current_unlocked_milestone}</strong></p>` : ''}
+                <h4 style="margin: 0 0 0.75rem 0; font-size: 1.1rem; color: #ff8a33; font-weight: 700;">Milestones (${milestones.length})</h4>
+                <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: rgba(33, 150, 243, 0.15); border-radius: 4px; border-left: 3px solid #2196f3;">
+                    <p style="margin: 0; font-size: 0.9rem; color: #64b5f6;"><strong>Stepwise Fund Release:</strong> Funds for each milestone become available only after the previous milestone is completed with approved invoice.</p>
+                    ${order.funds_locked ? `<p style="margin: 0.25rem 0 0 0; font-size: 0.9rem; color: #64b5f6;">Currently unlocked: <strong>Milestone ${order.current_unlocked_milestone}</strong></p>` : ''}
                 </div>
                 ${milestones.length > 0 ? milestones.map(m => `
-                    <div style="padding: 1rem; margin-bottom: 0.75rem; background: #f9fafb; border-left: 4px solid ${m.status === 'COMPLETED' ? '#22c55e' : m.status === 'PENDING' ? '#fbbf24' : m.status === 'FROZEN' ? '#dc2626' : m.status === 'PAUSED' ? '#f97316' : '#9ca3af'}; border-radius: 4px;">
+                    <div style="padding: 1rem; margin-bottom: 0.75rem; background: rgba(25, 25, 25, 0.8); border-left: 4px solid ${m.status === 'COMPLETED' ? '#4caf50' : m.status === 'PENDING' ? '#ffc107' : m.status === 'FROZEN' ? '#ef5350' : m.status === 'PAUSED' ? '#ff9800' : '#999'}; border-radius: 4px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                             <div>
-                                <strong style="font-size: 1.05rem; color: #111;">${m.name}</strong>
-                                ${order.current_unlocked_milestone >= m.order ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.5rem; background: #dcfce7; color: #166534; border-radius: 3px; font-size: 0.75rem; font-weight: 600;">Funds Available</span>` : `<span style="margin-left: 0.5rem; padding: 0.15rem 0.5rem; background: #f3f4f6; color: #666; border-radius: 3px; font-size: 0.75rem; font-weight: 600;">Funds Locked</span>`}
+                                <strong style="font-size: 1.05rem; color: #e8e8e8;">${m.name}</strong>
+                                ${order.current_unlocked_milestone >= m.order ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.5rem; background: rgba(76, 175, 80, 0.2); color: #4caf50; border-radius: 3px; font-size: 0.75rem; font-weight: 600;">Funds Available</span>` : `<span style="margin-left: 0.5rem; padding: 0.15rem 0.5rem; background: rgba(155, 155, 155, 0.2); color: #999; border-radius: 3px; font-size: 0.75rem; font-weight: 600;">Funds Locked</span>`}
                             </div>
                             <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                <span style="padding: 0.25rem 0.75rem; background: ${m.status === 'COMPLETED' ? '#dcfce7' : m.status === 'PENDING' ? '#fef3c7' : m.status === 'FROZEN' ? '#fee2e2' : m.status === 'PAUSED' ? '#fed7aa' : '#f3f4f6'}; color: ${m.status === 'COMPLETED' ? '#166534' : m.status === 'PENDING' ? '#92400e' : m.status === 'FROZEN' ? '#991b1b' : m.status === 'PAUSED' ? '#9a3412' : '#374151'}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
+                                <span style="padding: 0.25rem 0.75rem; background: ${m.status === 'COMPLETED' ? 'rgba(76, 175, 80, 0.2)' : m.status === 'PENDING' ? 'rgba(255, 193, 7, 0.2)' : m.status === 'FROZEN' ? 'rgba(244, 67, 54, 0.2)' : m.status === 'PAUSED' ? 'rgba(255, 152, 0, 0.2)' : 'rgba(155, 155, 155, 0.2)'}; color: ${m.status === 'COMPLETED' ? '#4caf50' : m.status === 'PENDING' ? '#ffc107' : m.status === 'FROZEN' ? '#ef5350' : m.status === 'PAUSED' ? '#ff9800' : '#999'}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
                                     ${m.status}
                                 </span>
                             </div>
                         </div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; font-size: 0.9rem; margin-bottom: 0.75rem;">
-                            <div><span style="color: #4b5563; font-weight: 500;">Amount:</span> <strong style="color: #111;">$${m.amount.toLocaleString()}</strong></div>
-                            <div><span style="color: #4b5563; font-weight: 500;">Percentage:</span> <strong style="color: #111;">${m.percentage}%</strong></div>
-                            <div><span style="color: #4b5563; font-weight: 500;">Released:</span> <strong style="color: #111;">$${m.released_amount.toLocaleString()}</strong></div>
-                            ${m.timeline_days ? `<div><span style="color: #4b5563; font-weight: 500;">Timeline:</span> <strong style="color: #111;">${m.timeline_days} days</strong></div>` : ''}
+                            <div><span style="color: #b8b8b8; font-weight: 500;">Amount:</span> <strong style="color: #ff8a33;">$${m.amount.toLocaleString()}</strong></div>
+                            <div><span style="color: #b8b8b8; font-weight: 500;">Percentage:</span> <strong style="color: #ff8a33;">${m.percentage}%</strong></div>
+                            <div><span style="color: #b8b8b8; font-weight: 500;">Released:</span> <strong style="color: #ff8a33;">$${m.released_amount.toLocaleString()}</strong></div>
+                            ${m.timeline_days ? `<div><span style="color: #b8b8b8; font-weight: 500;">Timeline:</span> <strong style="color: #ff8a33;">${m.timeline_days} days</strong></div>` : ''}
                         </div>
-                        ${m.freeze_reason ? `<div style="padding: 0.75rem; background: #fee2e2; border-left: 3px solid #dc2626; border-radius: 4px; margin-bottom: 0.75rem;"><p style="margin: 0; font-size: 0.9rem; color: #991b1b;"><strong>Frozen:</strong> ${m.freeze_reason}</p></div>` : ''}
-                        ${m.pause_reason ? `<div style="padding: 0.75rem; background: #fed7aa; border-left: 3px solid #f97316; border-radius: 4px; margin-bottom: 0.75rem;"><p style="margin: 0; font-size: 0.9rem; color: #9a3412;"><strong>Paused:</strong> ${m.pause_reason}</p></div>` : ''}
+                        ${m.freeze_reason ? `<div style="padding: 0.75rem; background: rgba(244, 67, 54, 0.15); border-left: 3px solid #ef5350; border-radius: 4px; margin-bottom: 0.75rem;"><p style="margin: 0; font-size: 0.9rem; color: #ef5350;"><strong>Frozen:</strong> ${m.freeze_reason}</p></div>` : ''}
+                        ${m.pause_reason ? `<div style="padding: 0.75rem; background: rgba(255, 152, 0, 0.15); border-left: 3px solid #ff9800; border-radius: 4px; margin-bottom: 0.75rem;"><p style="margin: 0; font-size: 0.9rem; color: #ff9800;"><strong>Paused:</strong> ${m.pause_reason}</p></div>` : ''}
                         
                         <!-- NEW PROOF SYSTEM: Check for proof object with status -->
                         ${m.proof && typeof m.proof === 'object' && m.proof.status ? `
-                            <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: white; border-radius: 4px; border: 2px solid ${m.proof.status === 'APPROVED' ? '#22c55e' : m.proof.status === 'REJECTED' ? '#dc2626' : '#fbbf24'};">
+                            <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: rgba(26, 26, 26, 0.8); border-radius: 4px; border: 2px solid ${m.proof.status === 'APPROVED' ? '#4caf50' : m.proof.status === 'REJECTED' ? '#ef5350' : '#ffc107'};">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
                                     <div>
-                                        <span style="font-size: 0.9rem; font-weight: 600; color: #111;">📄 Document Proof</span>
-                                        <div style="margin-top: 0.25rem; font-size: 0.85rem; color: #6b7280;">
+                                        <span style="font-size: 0.9rem; font-weight: 600; color: #e8e8e8;">Document Proof</span>
+                                        <div style="margin-top: 0.25rem; font-size: 0.85rem; color: #b8b8b8;">
                                             ${m.proof.originalname || 'Document uploaded'}
                                         </div>
                                     </div>
-                                    <span style="padding: 0.25rem 0.75rem; background: ${m.proof.status === 'APPROVED' ? '#dcfce7' : m.proof.status === 'REJECTED' ? '#fee2e2' : '#fef3c7'}; color: ${m.proof.status === 'APPROVED' ? '#166534' : m.proof.status === 'REJECTED' ? '#991b1b' : '#92400e'}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
-                                        ${m.proof.status === 'APPROVED' ? '✓ APPROVED' : m.proof.status === 'REJECTED' ? '✗ REJECTED' : '⏳ PENDING REVIEW'}
+                                    <span style="padding: 0.25rem 0.75rem; background: ${m.proof.status === 'APPROVED' ? 'rgba(76, 175, 80, 0.2)' : m.proof.status === 'REJECTED' ? 'rgba(244, 67, 54, 0.2)' : 'rgba(255, 193, 7, 0.2)'}; color: ${m.proof.status === 'APPROVED' ? '#4caf50' : m.proof.status === 'REJECTED' ? '#ef5350' : '#ffc107'}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
+                                        ${m.proof.status === 'APPROVED' ? 'APPROVED' : m.proof.status === 'REJECTED' ? 'REJECTED' : 'PENDING REVIEW'}
                                     </span>
                                 </div>
                                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-                                    <button onclick="openProofPreview('${order.id}', ${milestones.indexOf(m)}, '${m.name}', ${m.amount})" style="flex: 1; padding: 0.5rem; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
-                                        👁️ Preview Document
+                                    <button onclick="openProofPreview('${order.id}', ${milestones.indexOf(m)}, '${m.name}', ${m.amount})" style="flex: 1; padding: 0.5rem; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
+                                        Preview Document
                                     </button>
                                 </div>
                                 ${m.proof.status === 'PENDING_REVIEW' && m.status !== 'FROZEN' && m.status !== 'PAUSED' ? `
                                     <div style="display: flex; gap: 0.5rem;">
-                                        <button onclick="openProofApprovalModal('${order.id}', ${milestones.indexOf(m)}, '${m.name}', ${m.amount})" style="flex: 1; padding: 0.5rem; background: #22c55e; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600; font-weight: 700;">
-                                            ✓ Approve & Release $${m.amount.toLocaleString()}
+                                        <button onclick="openProofApprovalModal('${order.id}', ${milestones.indexOf(m)}, '${m.name}', ${m.amount})" style="flex: 1; padding: 0.5rem; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600; font-weight: 700;">
+                                            Approve & Release $${m.amount.toLocaleString()}
                                         </button>
-                                        <button onclick="adminRejectProof('${order.id}', ${milestones.indexOf(m)}, '${m.name}')" style="flex: 1; padding: 0.5rem; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
-                                            ✗ Reject
+                                        <button onclick="adminRejectProof('${order.id}', ${milestones.indexOf(m)}, '${m.name}')" style="flex: 1; padding: 0.5rem; background: #ef5350; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
+                                            Reject
                                         </button>
                                     </div>
                                 ` : ''}
                                 ${m.proof.status === 'REJECTED' && m.proof.rejectionReason ? `
-                                    <div style="padding: 0.5rem; background: #fee2e2; border-radius: 3px; border-left: 3px solid #dc2626; margin-top: 0.5rem;">
-                                        <p style="margin: 0; font-size: 0.85rem; color: #991b1b;"><strong>Reason:</strong> ${m.proof.rejectionReason}</p>
+                                    <div style="padding: 0.5rem; background: rgba(244, 67, 54, 0.15); border-radius: 3px; border-left: 3px solid #ef5350; margin-top: 0.5rem;">
+                                        <p style="margin: 0; font-size: 0.85rem; color: #ef5350;"><strong>Reason:</strong> ${m.proof.rejectionReason}</p>
                                     </div>
                                 ` : ''}
                                 ${m.proof.status === 'APPROVED' && m.proof.approvalNotes ? `
-                                    <div style="padding: 0.5rem; background: #dcfce7; border-radius: 3px; border-left: 3px solid #22c55e; margin-top: 0.5rem;">
-                                        <p style="margin: 0; font-size: 0.85rem; color: #166534;"><strong>Notes:</strong> ${m.proof.approvalNotes}</p>
+                                    <div style="padding: 0.5rem; background: rgba(76, 175, 80, 0.15); border-radius: 3px; border-left: 3px solid #4caf50; margin-top: 0.5rem;">
+                                        <p style="margin: 0; font-size: 0.85rem; color: #4caf50;"><strong>Notes:</strong> ${m.proof.approvalNotes}</p>
                                     </div>
                                 ` : ''}
                             </div>
                         ` : m.proof_file_path ? `
                             <!-- OLD PROOF SYSTEM: Legacy proof_file_path -->
-                            <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">
+                            <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: rgba(26, 26, 26, 0.8); border-radius: 4px; border: 1px solid rgba(255, 138, 51, 0.2);">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: ${m.proof_verification_status === 'PENDING' ? '0.75rem' : '0'};">
                                     <div>
-                                        <span style="font-size: 0.9rem; font-weight: 600;">Invoice/Proof</span>
+                                        <span style="font-size: 0.9rem; font-weight: 600; color: #e8e8e8;">Invoice/Proof</span>
                                         <div style="margin-top: 0.25rem;">
-                                            <a href="${m.proof_url}" target="_blank" style="color: #0284c7; font-size: 0.9rem;">View Document</a>
+                                            <a href="${m.proof_url}" target="_blank" style="color: #2196f3; font-size: 0.9rem;">View Document</a>
                                         </div>
                                     </div>
-                                    <span style="padding: 0.25rem 0.75rem; background: ${m.proof_verification_status === 'VERIFIED' ? '#dcfce7' : m.proof_verification_status === 'REJECTED' ? '#fee2e2' : '#fef3c7'}; color: ${m.proof_verification_status === 'VERIFIED' ? '#166534' : m.proof_verification_status === 'REJECTED' ? '#991b1b' : '#92400e'}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
+                                    <span style="padding: 0.25rem 0.75rem; background: ${m.proof_verification_status === 'VERIFIED' ? 'rgba(76, 175, 80, 0.2)' : m.proof_verification_status === 'REJECTED' ? 'rgba(244, 67, 54, 0.2)' : 'rgba(255, 193, 7, 0.2)'}; color: ${m.proof_verification_status === 'VERIFIED' ? '#4caf50' : m.proof_verification_status === 'REJECTED' ? '#ef5350' : '#ffc107'}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
                                         ${m.proof_verification_status === 'VERIFIED' ? 'Verified' : m.proof_verification_status === 'REJECTED' ? 'Rejected' : 'Pending Review'}
                                     </span>
                                 </div>
                                 ${m.proof_verification_status === 'PENDING' && m.status !== 'FROZEN' && m.status !== 'PAUSED' ? `
                                     <div style="display: flex; gap: 0.5rem;">
-                                        <button onclick="approveInvoice('${m.id}', '${m.name}')" style="flex: 1; padding: 0.5rem; background: #22c55e; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
+                                        <button onclick="approveInvoice('${m.id}', '${m.name}')" style="flex: 1; padding: 0.5rem; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
                                             Approve & Complete Milestone
                                         </button>
-                                        <button onclick="rejectInvoice('${m.id}', '${m.name}')" style="flex: 1; padding: 0.5rem; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
+                                        <button onclick="rejectInvoice('${m.id}', '${m.name}')" style="flex: 1; padding: 0.5rem; background: #ef5350; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
                                             Reject Invoice
                                         </button>
                                     </div>
                                 ` : ''}
                             </div>
-                        ` : m.status !== 'COMPLETED' ? `<div style="padding: 0.75rem; background: #fef3c7; border-radius: 4px; border-left: 3px solid #fbbf24; margin-bottom: 0.75rem;">
-                                <p style="margin: 0; font-size: 0.9rem; color: #92400e;"><strong>Waiting for Proof</strong> - Supplier needs to upload proof document</p>
+                        ` : m.status !== 'COMPLETED' ? `<div style="padding: 0.75rem; background: rgba(255, 193, 7, 0.15); border-radius: 4px; border-left: 3px solid #ffc107; margin-bottom: 0.75rem;">
+                                <p style="margin: 0; font-size: 0.9rem; color: #ffc107;"><strong>Waiting for Proof</strong> - Supplier needs to upload proof document</p>
                             </div>` : ''}
                         
                         <!-- Admin Control Buttons -->
-                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #e5e7eb;">
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(255, 138, 51, 0.2);">
                             ${m.status === 'PENDING' ? `
-                                <button onclick="pauseMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #f97316; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                <button onclick="pauseMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
                                     Pause
                                 </button>
                             ` : ''}
                             ${m.status === 'PAUSED' ? `
-                                <button onclick="resumeMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #22c55e; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                <button onclick="resumeMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
                                     Resume
                                 </button>
                             ` : ''}
                             ${(m.status === 'PENDING' || m.status === 'PAUSED') ? `
-                                <button onclick="freezeMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                <button onclick="freezeMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #ef5350; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
                                     Freeze
                                 </button>
                             ` : ''}
                             ${m.status === 'FROZEN' ? `
-                                <button onclick="unfreezeMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                <button onclick="unfreezeMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
                                     Unfreeze
                                 </button>
                             ` : ''}
                             ${m.status !== 'COMPLETED' && m.proof_verification_status === 'VERIFIED' ? `
-                                <button onclick="forceCompleteMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                <button onclick="forceCompleteMilestoneAdmin('${m.id}', '${m.name}')" style="padding: 0.5rem 1rem; background: #9c27b0; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
                                     Force Complete
                                 </button>
                             ` : ''}
                             ${m.name.toLowerCase().includes('raw') || m.name.toLowerCase().includes('material') ? `
-                                <button onclick="releaseFundsToLender('${m.id}', '${m.name}', ${m.amount})" style="padding: 0.5rem 1rem; background: #0ea5e9; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                <button onclick="releaseFundsToLender('${m.id}', '${m.name}', ${m.amount})" style="padding: 0.5rem 1rem; background: #00bcd4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
                                     Release to Lender
                                 </button>
                             ` : ''}
                             ${m.name.toLowerCase().includes('production') && m.status !== 'COMPLETED' ? `
-                                <button onclick="releaseFundsToSupplier('${m.id}', '${m.name}', ${m.amount})" style="padding: 0.5rem 1rem; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                <button onclick="releaseFundsToSupplier('${m.id}', '${m.name}', ${m.amount})" style="padding: 0.5rem 1rem; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
                                     Release to Supplier
                                 </button>
                             ` : ''}
@@ -614,16 +618,16 @@ async function renderAdminOrderCard(order) {
             
             <!-- Transactions Section -->
             <div style="margin-bottom: 1rem;">
-                <h4 style="margin: 0 0 0.75rem 0; font-size: 1.1rem; color: #111; font-weight: 700;">Transactions (${transactions.length})</h4>
+                <h4 style="margin: 0 0 0.75rem 0; font-size: 1.1rem; color: #ff8a33; font-weight: 700;">Transactions (${transactions.length})</h4>
                 ${transactions.length > 0 ? transactions.map(t => `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; margin-bottom: 0.5rem; background: ${t.type === 'LOCK' ? '#dbeafe' : '#dcfce7'}; border-radius: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; margin-bottom: 0.5rem; background: ${t.type === 'LOCK' ? 'rgba(33, 150, 243, 0.15)' : 'rgba(76, 175, 80, 0.15)'}; border-radius: 4px;">
                         <div>
-                            <span style="font-weight: 700; color: ${t.type === 'LOCK' ? '#1e40af' : '#166534'};">${t.type}</span>
-                            <div style="font-size: 0.85rem; color: #374151; margin-top: 0.25rem; font-weight: 500;">${t.description}</div>
-                            <div style="font-size: 0.8rem; color: #6b7280; margin-top: 0.25rem;">${new Date(t.createdAt).toLocaleString()}</div>
+                            <span style="font-weight: 700; color: ${t.type === 'LOCK' ? '#2196f3' : '#4caf50'};">${t.type}</span>
+                            <div style="font-size: 0.85rem; color: #b8b8b8; margin-top: 0.25rem; font-weight: 500;">${t.description}</div>
+                            <div style="font-size: 0.8rem; color: #999; margin-top: 0.25rem;">${new Date(t.createdAt).toLocaleString()}</div>
                         </div>
                         <div style="text-align: right;">
-                            <div style="font-size: 1.1rem; font-weight: 700; color: ${t.type === 'LOCK' ? '#1e40af' : '#166534'};">
+                            <div style="font-size: 1.1rem; font-weight: 700; color: ${t.type === 'LOCK' ? '#2196f3' : '#4caf50'};">
                                 $${t.amount.toLocaleString()}
                             </div>
                         </div>
@@ -831,7 +835,7 @@ function renderOrderActions(order) {
     // LENDER: Approve pending lender approval orders
     if (currentUser.role === 'LENDER' && order.status === 'PENDING_LENDER_APPROVAL') {
         actions += `<button onclick="openLenderApprovalModal('${order.id}')" class="btn-success">Approve Order</button>`;
-        actions += `<button onclick="rejectFundingRequest('${order.id}')" style="margin-left: 0.5rem; padding: 0.75rem 1.5rem; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Reject</button>`;
+        actions += `<button onclick="rejectFundingRequest('${order.id}')" style="padding: 0.75rem 1.5rem; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Reject</button>`;
     }
     
     // ADMIN: Lock funds for lender-approved orders
@@ -1175,26 +1179,26 @@ function renderOrderDetailsModal(order, transactionsData) {
                 <p style="margin: 0; opacity: 0.95;">Complete breakdown of milestones and payments</p>
             </div>
             
-            <h3 style="color: #111; margin-bottom: 1rem;">Payment Milestones (${milestones.length})</h3>
-            <div style="display: flex; gap: 1.5rem; margin-bottom: 1.5rem; padding: 1rem; background: #f0f9ff; border-radius: 8px;">
+            <h3 style="color: #e8e8e8; margin-bottom: 1rem;">Payment Milestones (${milestones.length})</h3>
+            <div style="display: flex; gap: 1.5rem; margin-bottom: 1.5rem; padding: 1rem; background: rgba(33, 150, 243, 0.15); border-radius: 8px;">
                 <div style="flex: 1; text-align: center;">
-                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 0.25rem;">Status</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #0284c7;">${order.status}</div>
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 0.25rem;">Status</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #2196f3;">${order.status}</div>
                 </div>
                 <div style="flex: 1; text-align: center;">
-                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 0.25rem;">Funds Status</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: ${order.funds_locked ? '#22c55e' : '#fbbf24'};">${order.funds_locked ? 'Locked' : 'Pending'}</div>
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 0.25rem;">Funds Status</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: ${order.funds_locked ? '#4caf50' : '#ffc107'};">${order.funds_locked ? 'Locked' : 'Pending'}</div>
                 </div>
                 <div style="flex: 1; text-align: center;">
-                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 0.25rem;">Total Value</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #111;">$${order.value.toLocaleString()}</div>
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 0.25rem;">Total Value</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #ff8a33;">$${order.value.toLocaleString()}</div>
                 </div>
             </div>
             
             ${milestones.length === 0 ? `
-                <div style="padding: 2rem; text-align: center; background: #fef3c7; border-radius: 8px; border: 2px dashed #fbbf24;">
-                    <p style="margin: 0; font-size: 1.1rem; color: #92400e; font-weight: 600;">No milestones defined yet</p>
-                    <p style="margin: 0.5rem 0 0 0; color: #92400e;">Supplier needs to define milestone breakdown when creating the order</p>
+                <div style="padding: 2rem; text-align: center; background: rgba(255, 193, 7, 0.15); border-radius: 8px; border: 2px dashed #ffc107;">
+                    <p style="margin: 0; font-size: 1.1rem; color: #ffc107; font-weight: 600;">No milestones defined yet</p>
+                    <p style="margin: 0.5rem 0 0 0; color: #ffc107;">Supplier needs to define milestone breakdown when creating the order</p>
                 </div>
             ` : milestones.map((m, idx) => {
                 const amount = (order.value * m.percentage) / 100;
@@ -1202,48 +1206,48 @@ function renderOrderDetailsModal(order, transactionsData) {
                 const status = !order.funds_locked ? 'LOCKED' : (isFirst ? 'PENDING' : 'LOCKED');
                 
                 return `
-                <div class="milestone-card" style="margin-bottom: 1.5rem; padding: 1.5rem; border: 3px solid ${status === 'PENDING' ? '#fbbf24' : '#9ca3af'}; border-radius: 12px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div class="milestone-card" style="margin-bottom: 1.5rem; padding: 1.5rem; border: 3px solid ${status === 'PENDING' ? '#ffc107' : '#666'}; border-radius: 12px; background: rgba(26, 26, 26, 0.6); box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
                         <div style="flex: 1;">
-                            <h4 style="margin: 0 0 0.5rem 0; font-size: 1.2rem; color: #111;">Milestone ${idx + 1}: ${m.name}</h4>
-                            <p style="margin: 0; font-size: 0.95rem; color: #4b5563; line-height: 1.5;">
+                            <h4 style="margin: 0 0 0.5rem 0; font-size: 1.2rem; color: #e8e8e8;">Milestone ${idx + 1}: ${m.name}</h4>
+                            <p style="margin: 0; font-size: 0.95rem; color: #b8b8b8; line-height: 1.5;">
                                 ${getMilestoneDescription(m.name)}
                             </p>
                         </div>
-                        <span style="padding: 0.5rem 1rem; border-radius: 6px; font-weight: 700; font-size: 0.9rem; white-space: nowrap; margin-left: 1rem; background: ${status === 'PENDING' ? '#fef3c7' : '#f3f4f6'}; color: ${status === 'PENDING' ? '#92400e' : '#374151'};">
+                        <span style="padding: 0.5rem 1rem; border-radius: 6px; font-weight: 700; font-size: 0.9rem; white-space: nowrap; margin-left: 1rem; background: ${status === 'PENDING' ? 'rgba(255, 193, 7, 0.15)' : 'rgba(100, 100, 100, 0.15)'}; color: ${status === 'PENDING' ? '#ffc107' : '#999'};">
                             ${status}
                         </span>
                     </div>
                     
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border-radius: 8px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: rgba(50, 50, 50, 0.5); border-radius: 8px;">
                         <div>
-                            <div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.25rem;">Milestone Amount</div>
-                            <div style="font-size: 1.3rem; font-weight: 700; color: #111;">$${amount.toLocaleString()}</div>
-                            <div style="font-size: 0.85rem; color: #6b7280;">${m.percentage}% of order value</div>
+                            <div style="font-size: 0.85rem; color: #999; margin-bottom: 0.25rem;">Milestone Amount</div>
+                            <div style="font-size: 1.3rem; font-weight: 700; color: #ff8a33;">$${amount.toLocaleString()}</div>
+                            <div style="font-size: 0.85rem; color: #999;">${m.percentage}% of order value</div>
                         </div>
                         <div>
-                            <div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.25rem;">Purpose</div>
-                            <div style="font-size: 1rem; font-weight: 600; color: #111;">${m.name}</div>
+                            <div style="font-size: 0.85rem; color: #999; margin-bottom: 0.25rem;">Purpose</div>
+                            <div style="font-size: 1rem; font-weight: 600; color: #e8e8e8;">${m.name}</div>
                         </div>
                     </div>
                     
                     ${status === 'LOCKED' && !order.funds_locked ? `
-                        <div style="margin-top: 1rem; padding: 1rem; background: #fef3c7; border-radius: 8px; border-left: 4px solid #fbbf24;">
-                            <p style="margin: 0; font-weight: 600; color: #92400e;">Awaiting Fund Lock</p>
-                            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #92400e;">Admin needs to lock funds before work can begin</p>
+                        <div style="margin-top: 1rem; padding: 1rem; background: rgba(255, 193, 7, 0.15); border-radius: 8px; border-left: 4px solid #ffc107;">
+                            <p style="margin: 0; font-weight: 600; color: #ffc107;">Awaiting Fund Lock</p>
+                            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #ffc107;">Admin needs to lock funds before work can begin</p>
                         </div>
                     ` : ''}
                     
                     ${status === 'LOCKED' && order.funds_locked && currentUser.role === 'SUPPLIER' ? `
-                        <div style="margin-top: 1rem; padding: 1rem; background: #fee2e2; border-radius: 8px; border-left: 4px solid #dc2626;">
-                            <p style="margin: 0; font-weight: 600; color: #991b1b;">🔒 Milestone Locked</p>
-                            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #991b1b;">Awaiting approval of previous milestone before you can upload for this one</p>
+                        <div style="margin-top: 1rem; padding: 1rem; background: rgba(244, 67, 54, 0.15); border-radius: 8px; border-left: 4px solid #ef5350;">
+                            <p style="margin: 0; font-weight: 600; color: #ef5350;">Milestone Locked</p>
+                            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #ef5350;">Awaiting approval of previous milestone before you can upload for this one</p>
                         </div>
                     ` : ''}
                     
                     ${status === 'PENDING' && order.funds_locked && currentUser.role === 'SUPPLIER' ? `
-                        <button onclick="openProofUploadModal(${idx}, '${m.name}')" style="margin-top: 1rem; width: 100%; padding: 1rem; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 1.05rem;">
-                            ✅ Upload Proof & Complete Milestone
+                        <button onclick="openProofUploadModal(${idx}, '${m.name}')" style="margin-top: 1rem; width: 100%; padding: 1rem; background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 1.05rem;">
+                            Upload Proof & Complete Milestone
                         </button>
                     ` : ''}
                 </div>
@@ -1253,21 +1257,21 @@ function renderOrderDetailsModal(order, transactionsData) {
         </div>
         
         <div class="details-section" style="margin-top: 2rem;">
-            <h3 style="color: #111;">Transactions</h3>
+            <h3 style="color: #ff8a33;">Transactions</h3>
             <div style="display: flex; gap: 2rem; margin-bottom: 1rem;">
-                <p><strong>Total Locked:</strong> $${summary.total_locked.toLocaleString()}</p>
-                <p><strong>Total Released:</strong> $${summary.total_released.toLocaleString()}</p>
-                <p><strong>Balance:</strong> $${summary.escrow_balance.toLocaleString()}</p>
+                <p style="color: #b8b8b8;"><strong>Total Locked:</strong> $${summary.total_locked.toLocaleString()}</p>
+                <p style="color: #b8b8b8;"><strong>Total Released:</strong> $${summary.total_released.toLocaleString()}</p>
+                <p style="color: #b8b8b8;"><strong>Balance:</strong> $${summary.escrow_balance.toLocaleString()}</p>
             </div>
             
             ${transactions.length > 0 ? transactions.map(t => `
-                <div style="display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid #e5e7eb; align-items: center;">
+                <div style="display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid rgba(255, 138, 51, 0.2); align-items: center;">
                     <div style="flex: 1;">
-                        <span style="padding: 0.25rem 0.5rem; border-radius: 4px; background: ${t.type === 'LOCK' ? '#dbeafe' : '#dcfce7'}; font-weight: 600;">${t.type}</span>
-                        <p style="margin: 0.25rem 0 0 0; font-size: 0.9rem; color: #666;">${t.description}</p>
+                        <span style="padding: 0.25rem 0.5rem; border-radius: 4px; background: ${t.type === 'LOCK' ? 'rgba(33, 150, 243, 0.15)' : 'rgba(76, 175, 80, 0.15)'}; font-weight: 600; color: ${t.type === 'LOCK' ? '#2196f3' : '#4caf50'};">${t.type}</span>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 0.9rem; color: #b8b8b8;">${t.description}</p>
                     </div>
                     <div style="text-align: right;">
-                        <div style="font-weight: 600; font-size: 1.1rem;">$${t.amount.toLocaleString()}</div>
+                        <div style="font-weight: 600; font-size: 1.1rem; color: #ff8a33;">$${t.amount.toLocaleString()}</div>
                         <span style="font-size: 0.8rem; color: #999;">${new Date(t.createdAt).toLocaleString()}</span>
                     </div>
                 </div>
@@ -1554,7 +1558,7 @@ function openLenderApprovalModal(orderId) {
         // Subsequent milestone approval or waiting for supplier
         openNextMilestoneApprovalFlowModal(orderId);
     } else {
-        alert(`Cannot approve order. Current status: ${order.status}`);
+        alert(`Current status: ${order.status}`);
     }
 }
 
@@ -1575,40 +1579,40 @@ function openFirstMilestoneApprovalModal(orderId) {
     modal.innerHTML = `
         <div class="modal-content" style="max-width: 700px;">
             <h2>Approve First Milestone</h2>
-            <div style="background: #f5f5f5; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
-                <p><strong>Order:</strong> ${order.order_id}</p>
-                <p><strong>Buyer:</strong> ${order.buyer_name}</p>
-                <p><strong>Total Order Value:</strong> $${order.value.toLocaleString()}</p>
-                <p><strong>Delivery Date:</strong> ${new Date(order.delivery_date).toLocaleDateString()}</p>
+            <div style="background: rgba(26, 26, 26, 0.6); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid rgba(255, 138, 51, 0.3);">
+                <p style="color: #e8e8e8;"><strong>Order:</strong> ${order.order_id}</p>
+                <p style="color: #e8e8e8;"><strong>Buyer:</strong> ${order.buyer_name}</p>
+                <p style="color: #e8e8e8;"><strong>Total Order Value:</strong> $${order.value.toLocaleString()}</p>
+                <p style="color: #e8e8e8;"><strong>Delivery Date:</strong> ${new Date(order.delivery_date).toLocaleDateString()}</p>
             </div>
             
-            <div style="background: #fff3cd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border-left: 4px solid #ffc107;">
-                <p style="margin: 0; font-weight: 600; color: #856404;">Milestone-wise Funding</p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #856404;">
+            <div style="background: rgba(255, 193, 7, 0.15); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #ffc107;">
+                <p style="margin: 0; font-weight: 600; color: #ffc107;">Milestone-wise Funding</p>
+                <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #ffc107;">
                     You will approve ONE milestone at a time. After the supplier completes this milestone and provides proof, 
                     you can approve the next milestone.
                 </p>
             </div>
             
             <div style="margin-bottom: 1rem;">
-                <h3 style="margin-bottom: 0.5rem;">Approve: ${firstMilestone.name}</h3>
-                <div style="background: white; padding: 1rem; border: 2px solid #22c55e; border-radius: 4px;">
+                <h3 style="margin-bottom: 0.5rem; color: #e8e8e8;">Approve: ${firstMilestone.name}</h3>
+                <div style="background: rgba(26, 26, 26, 0.6); padding: 1rem; border: 2px solid #4caf50; border-radius: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
                         <div>
-                            <strong style="font-size: 1.1rem;">${firstMilestone.name}</strong>
-                            <div style="font-size: 0.9rem; color: #666; margin-top: 0.25rem;">
+                            <strong style="font-size: 1.1rem; color: #e8e8e8;">${firstMilestone.name}</strong>
+                            <div style="font-size: 0.9rem; color: #999; margin-top: 0.25rem;">
                                 ${firstMilestone.percentage}% of order value
                             </div>
                         </div>
                         <div style="text-align: right;">
-                            <div style="font-size: 1.3rem; font-weight: 700; color: #22c55e;">
+                            <div style="font-size: 1.3rem; font-weight: 700; color: #4caf50;">
                                 $${firstMilestoneAmount.toLocaleString()}
                             </div>
                         </div>
                     </div>
                     
                     <div style="margin-top: 1rem;">
-                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #e8e8e8;">
                             Set Delivery Timeline (Days):
                         </label>
                         <input type="number" 
@@ -1617,16 +1621,16 @@ function openFirstMilestoneApprovalModal(orderId) {
                                min="1" 
                                required 
                                value="7"
-                               style="width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #ddd; border-radius: 4px;" />
-                        <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #666;">
+                               style="width: 100%; padding: 0.75rem; font-size: 1rem; border: 2px solid rgba(255, 138, 51, 0.3); border-radius: 8px; background: #0a0a0a; color: #e8e8e8;" />
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #999;">
                             Supplier must complete this milestone within this timeframe
                         </p>
                     </div>
                 </div>
             </div>
             
-            <div style="background: #e3f2fd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
-                <p style="margin: 0; font-size: 0.9rem; color: #1565c0;">
+            <div style="background: rgba(33, 150, 243, 0.15); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #2196f3;">
+                <p style="margin: 0; font-size: 0.9rem; color: #2196f3;">
                     ℹ️ <strong>Next Steps:</strong><br>
                     1. You approve this first milestone<br>
                     2. Supplier receives materials and completes milestone<br>

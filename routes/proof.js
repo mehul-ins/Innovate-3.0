@@ -5,7 +5,8 @@ const {
     uploadProof,
     approveProof,
     rejectProof,
-    getProof
+    getProof,
+    getDebugMilestoneData
 } = require('../controllers/proofController');
 const Order = require('../models/Order');
 
@@ -74,6 +75,14 @@ router.get(
     '/view/:orderId/:milestoneIndex',
     protect,
     getProof
+);
+
+// DEBUG: Get raw milestone data from database (includes approval status)
+// GET /api/proofs/dbcheck/:orderId
+router.get(
+    '/dbcheck/:orderId',
+    protect,
+    getDebugMilestoneData
 );
 
 module.exports = router;
