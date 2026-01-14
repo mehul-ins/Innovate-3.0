@@ -38,11 +38,17 @@ const ORDER_STATUS = {
  * 3. COMPLETED - Milestone completed and funds released
  *    - Supplier received payment
  *    - Next milestone becomes PENDING
+ * 4. PAUSED - Admin has paused this milestone
+ *    - No actions allowed until resumed
+ * 5. FROZEN - Admin has frozen all activities (suspicious activity detected)
+ *    - Requires admin intervention to unfreeze
  */
 const MILESTONE_STATUS = {
   LOCKED: 'LOCKED',
   PENDING: 'PENDING',
-  COMPLETED: 'COMPLETED'
+  COMPLETED: 'COMPLETED',
+  PAUSED: 'PAUSED',
+  FROZEN: 'FROZEN'
 };
 
 /**

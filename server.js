@@ -33,9 +33,12 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/order'));
 app.use('/api/milestones', require('./routes/milestone'));
+app.use('/api/proofs', require('./routes/proof'));
 app.use('/api/transactions', require('./routes/transaction'));
 app.use('/api/lenders', require('./routes/lender'));
 app.use('/api/notifications', require('./routes/notification'));
+app.use('/api/admin/milestones', require('./routes/adminMilestone'));
+app.use('/api/admin/fix', require('./routes/adminFix'));
 
 // Server-rendered views
 app.get('/', (req, res) => {

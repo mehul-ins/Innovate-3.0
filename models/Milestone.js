@@ -34,8 +34,7 @@ const milestoneSchema = new mongoose.Schema(
     },
     name: {
       type: String,
-      required: [true, 'Milestone name is required'],
-      enum: ['Raw Material', 'Production', 'Delivery']
+      required: [true, 'Milestone name is required']
     },
     amount: {
       type: Number,
@@ -102,6 +101,55 @@ const milestoneSchema = new mongoose.Schema(
       default: null,
       min: [1, 'Timeline must be at least 1 day'],
       description: 'Number of days from order approval to milestone due date'
+    },
+    // Admin control fields
+    pause_reason: {
+      type: String,
+      default: null,
+      description: 'Reason for pausing milestone'
+    },
+    paused_at: {
+      type: Date,
+      default: null,
+      description: 'Date when milestone was paused'
+    },
+    paused_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      description: 'Admin who paused the milestone'
+    },
+    freeze_reason: {
+      type: String,
+      default: null,
+      description: 'Reason for freezing milestone'
+    },
+    frozen_at: {
+      type: Date,
+      default: null,
+      description: 'Date when milestone was frozen'
+    },
+    frozen_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      description: 'Admin who froze the milestone'
+    },
+    force_completed_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      description: 'Admin who force completed the milestone'
+    },
+    force_completion_reason: {
+      type: String,
+      default: null,
+      description: 'Reason for force completing milestone'
+    },
+    completed_at: {
+      type: Date,
+      default: null,
+      description: 'Date when milestone was completed'
     }
   },
   {

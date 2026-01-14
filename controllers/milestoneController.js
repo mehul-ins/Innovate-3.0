@@ -38,9 +38,37 @@ exports.getOrderMilestones = async (req, res) => {
       });
     }
 
-    // Retrieve all milestones for the order
-    const milestones = await Milestone.find({ order_id: orderId })
+    // Retrieve milestones from Milestone collection
+    const milestonesFromCollection = await Milestone.find({ order_id: orderId })
       .sort({ order: 1 }); // Sort by milestone sequence
+
+    console.log('\n========== GET ORDER MILESTONES DEBUG ==========');
+    console.log('Order ID:', orderId);
+    console.log('Order.milestones array length:', order.milestones.length);
+    console.log('Milestone collection count:', milestonesFromCollection.length);
+
+    // If no milestones in collection but Order.milestones array has data, use that
+    let milestones = milestonesFromCollection;
+    if (milestonesFromCollection.length === 0 && order.milestones && order.milestones.length > 0) {
+      console.log('Using Order.milestones array (no Milestone documents found)');
+      // Convert Order.milestones array to milestone objects
+      milestones = order.milestones.map((m, idx) => ({
+        _id: null,
+        order_id: orderId,
+        name: m.name,
+        amount: m.amount || 0,
+        percentage: m.percentage || 0,
+        status: 'PENDING',
+        released_amount: 0,
+        proof: m.proof || null,
+        proof_file_path: null,
+        proof_verification_status: null,
+        proof_verified_at: null,
+        proof_verified_by: null,
+        order: idx + 1,
+        createdAt: new Date()
+      }));
+    }
 
     if (!milestones || milestones.length === 0) {
       return res.status(200).json({
@@ -52,9 +80,17 @@ exports.getOrderMilestones = async (req, res) => {
     }
 
     // Calculate milestone statistics
-    const totalAmount = milestones.reduce((sum, m) => sum + m.amount, 0);
-    const releasedAmount = milestones.reduce((sum, m) => sum + m.released_amount, 0);
+    const totalAmount = milestones.reduce((sum, m) => sum + (m.amount || 0), 0);
+    const releasedAmount = milestones.reduce((sum, m) => sum + (m.released_amount || 0), 0);
     const completedMilestones = milestones.filter(m => m.status === 'COMPLETED').length;
+
+    // Debug logging to see proof data
+    console.log('Final milestones count:', milestones.length);
+    milestones.forEach((m, idx) => {
+      const proof = m.proof;
+      console.log(`Milestone ${m.order} (${m.name}): has proof =`, !!proof, proof ? `status=${proof.status}` : '');
+    });
+    console.log('================================================\n');
 
     res.status(200).json({
       success: true,
@@ -64,22 +100,31 @@ exports.getOrderMilestones = async (req, res) => {
         status: order.status,
         funds_locked: order.funds_locked
       },
-      milestones: milestones.map(m => ({
-        id: m._id,
-        name: m.name,
-        amount: m.amount,
-        percentage: m.percentage,
-        status: m.status,
-        released_amount: m.released_amount,
-        proof: m.proof,
-        proof_file_path: m.proof_file_path,
-        proof_url: m.proof_file_path ? `/uploads/proofs/${path.basename(m.proof_file_path)}` : null,
-        proof_verification_status: m.proof_verification_status,
-        proof_verified_at: m.proof_verified_at,
-        proof_verified_by: m.proof_verified_by,
-        order: m.order,
-        createdAt: m.createdAt
-      })),
+      milestones: milestones.map((m) => {
+        // For Order.milestones array items, proof is already included
+        // For Milestone collection items, we need to check for proof in Order.milestones
+        let proofData = m.proof;
+        if (!proofData && m.order && order.milestones && order.milestones[m.order - 1]) {
+          proofData = order.milestones[m.order - 1].proof;
+        }
+        
+        return {
+          id: m._id || `milestone-${m.order}`,
+          name: m.name,
+          amount: m.amount,
+          percentage: m.percentage,
+          status: m.status,
+          released_amount: m.released_amount,
+          proof: proofData,
+          proof_file_path: m.proof_file_path,
+          proof_url: m.proof_file_path ? `/uploads/proofs/${path.basename(m.proof_file_path)}` : null,
+          proof_verification_status: m.proof_verification_status,
+          proof_verified_at: m.proof_verified_at,
+          proof_verified_by: m.proof_verified_by,
+          order: m.order,
+          createdAt: m.createdAt
+        };
+      }),
       summary: {
         total_milestones: milestones.length,
         completed: completedMilestones,
@@ -368,6 +413,110 @@ exports.verifyProof = async (req, res) => {
 };
 
 /**
+ * @desc    Approve milestone (lender approval for 2nd+ milestones)
+ * @route   POST /api/milestones/:id/approve
+ * @access  Private (LENDER only)
+ * 
+ * Lender Milestone Approval Workflow:
+ * 1. For 2nd+ milestones, lender must approve before execution
+ * 2. First milestone (order=1) is already approved with the initial order
+ * 3. When approved, milestone becomes PENDING and ready for execution
+ * 4. Supplier can then upload proof and complete the milestone
+ * 
+ * Validations:
+ * - Only LOCKED milestones can be approved (order > 1)
+ * - Lender must be the order's lender
+ * - Previous milestone must be COMPLETED
+ */
+exports.approveMilestone = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lenderId = req.user.id;
+
+    const milestone = await Milestone.findById(id)
+      .populate('order_id');
+
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        message: 'Milestone not found'
+      });
+    }
+
+    // Only allow approval for 2nd+ milestones
+    if (milestone.order === 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'First milestone is automatically approved with the order. Cannot approve again.'
+      });
+    }
+
+    // Check if lender owns this order
+    if (milestone.order_id.lender_id.toString() !== lenderId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to approve this milestone'
+      });
+    }
+
+    // Milestone must be LOCKED to be approved
+    if (milestone.status !== MILESTONE_STATUS.LOCKED) {
+      return res.status(400).json({
+        success: false,
+        message: `Milestone status is ${milestone.status}. Only LOCKED milestones can be approved.`
+      });
+    }
+
+    // Check if previous milestone is completed
+    const previousMilestone = await Milestone.findOne({
+      order_id: milestone.order_id._id,
+      order: milestone.order - 1
+    });
+
+    if (previousMilestone && previousMilestone.status !== MILESTONE_STATUS.COMPLETED) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot approve. Previous milestone (${previousMilestone.name}) is not yet completed.`
+      });
+    }
+
+    // Approve the milestone (change from LOCKED to PENDING)
+    milestone.status = MILESTONE_STATUS.PENDING;
+    milestone.lender_approved_at = new Date();
+    milestone.lender_approved_by = lenderId;
+    await milestone.save();
+
+    // Create notification for supplier
+    await Notification.create({
+      user_id: milestone.order_id.created_by,
+      order_id: milestone.order_id._id,
+      milestone_id: milestone._id,
+      type: 'MILESTONE_APPROVED',
+      message: `Lender approved milestone "${milestone.name}". You can now submit proof and complete this milestone.`,
+      read: false
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Milestone "${milestone.name}" approved successfully`,
+      milestone: {
+        id: milestone._id,
+        name: milestone.name,
+        status: milestone.status,
+        lender_approved_at: milestone.lender_approved_at
+      }
+    });
+  } catch (error) {
+    console.error('[approveMilestone] ERROR:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error approving milestone',
+      error: error.message
+    });
+  }
+};
+
+/**
  * @desc    Complete milestone (only after proof verification)
  * @route   PATCH /api/milestones/:id/complete
  * @access  Private (ADMIN only - after proof verification)
@@ -474,17 +623,42 @@ exports.completeMilestone = async (req, res) => {
     milestone.released_amount = releaseAmount; // Amount released (may be partial for Production)
     await milestone.save();
 
+    // Determine recipient based on milestone order
+    // First milestone (order === 1): Funds go to LENDER (they provided the capital)
+    // Subsequent milestones (order > 1): Funds go to SUPPLIER (direct payment)
+    const order = await Order.findById(milestone.order_id._id)
+      .populate('created_by', 'name email')
+      .populate('lender_id', 'name email');
+    
+    let recipientId = null;
+    let recipientType = null;
+    let recipientName = '';
+    
+    if (milestone.order === 1) {
+      // First milestone: Pay lender
+      recipientId = order.lender_id._id;
+      recipientType = 'LENDER';
+      recipientName = order.lender_id.name;
+    } else {
+      // Subsequent milestones: Pay supplier
+      recipientId = order.created_by._id;
+      recipientType = 'SUPPLIER';
+      recipientName = order.created_by.name;
+    }
+
     // Create RELEASE transaction in mock escrow ledger
-    // This records that funds are being released from escrow to supplier
-    // For Production: Only operational amount is released; rest held back
+    // This records that funds are being released from escrow
+    // Recipient varies: First milestone to lender, subsequent to supplier
     await Transaction.create({
       order_id: milestone.order_id._id,
       milestone_id: milestone._id,
       type: TRANSACTION_TYPE.RELEASE,
       amount: releaseAmount,
+      recipient_id: recipientId,
+      recipient_type: recipientType,
       description: holdbackAmount > 0 
-        ? `Milestone "${milestone.name}" completed. Operational release: $${releaseAmount}. Holdback: $${holdbackAmount}` 
-        : `Milestone "${milestone.name}" completed and approved. Funds released: $${releaseAmount}`,
+        ? `Milestone "${milestone.name}" completed. Operational release: $${releaseAmount} to ${recipientType} (${recipientName}). Holdback: $${holdbackAmount}` 
+        : `Milestone "${milestone.name}" completed. Funds released: $${releaseAmount} to ${recipientType} (${recipientName})`,
       status: 'RECORDED'
     });
 
@@ -504,14 +678,19 @@ exports.completeMilestone = async (req, res) => {
       // Set next milestone to PENDING, all others remain LOCKED/COMPLETED
       nextMilestone.status = MILESTONE_STATUS.PENDING;
       await nextMilestone.save();
-      // Notify supplier: next milestone unlocked
+      
+      // Update order to reflect next milestone's funds are now unlocked (stepwise release)
       const order = await Order.findById(milestone.order_id._id);
+      order.current_unlocked_milestone = nextMilestone.order;
+      await order.save();
+      
+      // Notify supplier: next milestone unlocked
       await Notification.create({
         user_id: order.created_by,
         order_id: order._id,
         milestone_id: nextMilestone._id,
         type: 'NEXT_MILESTONE_UNLOCKED',
-        message: `Next milestone "${nextMilestone.name}" unlocked for order ${order.order_id}.`,
+        message: `Next milestone "${nextMilestone.name}" unlocked for order ${order.order_id}. Funds now available for milestone ${nextMilestone.order}.`,
         read: false
       });
     } else {
@@ -519,6 +698,7 @@ exports.completeMilestone = async (req, res) => {
       const order = await Order.findById(milestone.order_id._id);
       if (order && (order.status === ORDER_STATUS.APPROVED || order.status === ORDER_STATUS.LENDER_APPROVED)) {
         order.status = ORDER_STATUS.COMPLETED;
+        order.current_unlocked_milestone = milestone.order; // All funds released
         await order.save();
         // Mock loan repayment transaction
         await Transaction.create({

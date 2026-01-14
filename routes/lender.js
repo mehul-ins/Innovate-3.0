@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getLenders, getPendingRequests, getOrderForApproval, rejectFunding } = require('../controllers/lenderController');
+const { getLenders, getPendingRequests, getOrderForApproval, rejectFunding, getPendingMilestones } = require('../controllers/lenderController');
 const { protect, lenderOnly } = require('../middleware/auth');
 
 /**
@@ -8,6 +8,7 @@ const { protect, lenderOnly } = require('../middleware/auth');
  * 
  * GET /api/lenders - Get all lenders (for supplier selection)
  * GET /api/lenders/pending-requests - Get pending funding requests (LENDER only)
+ * GET /api/lenders/pending-milestones - Get milestones pending lender approval (LENDER only)
  * GET /api/lenders/orders/:id - Get order details for approval (LENDER only)
  * POST /api/lenders/orders/:id/reject - Reject funding request (LENDER only)
  * 
@@ -19,6 +20,9 @@ router.get('/', protect, getLenders);
 
 // Get pending funding requests - LENDER only
 router.get('/pending-requests', protect, lenderOnly, getPendingRequests);
+
+// Get pending milestones for lender approval - LENDER only
+router.get('/pending-milestones', protect, lenderOnly, getPendingMilestones);
 
 // Get order details for approval - LENDER only
 router.get('/orders/:id', protect, lenderOnly, getOrderForApproval);

@@ -55,6 +55,18 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       description: 'Human-readable transaction description'
     },
+    recipient_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      description: 'Recipient of RELEASE transaction. First milestone goes to lender, subsequent to supplier'
+    },
+    recipient_type: {
+      type: String,
+      enum: ['LENDER', 'SUPPLIER', null],
+      default: null,
+      description: 'Type of recipient for RELEASE transactions'
+    },
     status: {
       type: String,
       enum: ['RECORDED', 'PROCESSED'],

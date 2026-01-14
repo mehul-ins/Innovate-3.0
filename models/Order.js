@@ -45,6 +45,12 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    // Track which milestone's funds are currently available (stepwise fund release)
+    // 0 = no funds released yet, 1 = milestone 1 funds available, 2 = milestone 2 funds available, etc.
+    current_unlocked_milestone: {
+      type: Number,
+      default: 0
+    },
     // Lender approval tracking
     lender_approval_status: {
       type: String,
@@ -74,7 +80,7 @@ const orderSchema = new mongoose.Schema(
       index: true
     },
     // Supplier-defined milestone breakdown (dynamic milestones)
-    // Structure: [{ name: string, percentage: number }, ...]
+    // Structure: [{ name: string, percentage: number, description: string, proof: {...}, ... }, ...]
     // Percentages are validated against platform rules
     milestones: [
       {
@@ -87,6 +93,31 @@ const orderSchema = new mongoose.Schema(
           required: [true, 'Milestone percentage is required'],
           min: [0, 'Percentage must be positive'],
           max: [100, 'Percentage cannot exceed 100']
+        },
+        description: {
+          type: String,
+          default: ''
+        },
+        // Proof of completion uploaded by supplier
+        proof: {
+          filename: String,
+          originalname: String,
+          mimetype: String,
+          size: Number,
+          path: String,
+          uploadedAt: Date,
+          uploadedBy: mongoose.Schema.Types.ObjectId,
+          status: {
+            type: String,
+            enum: ['PENDING_REVIEW', 'APPROVED', 'REJECTED'],
+            default: 'PENDING_REVIEW'
+          },
+          approvedAt: Date,
+          approvedBy: mongoose.Schema.Types.ObjectId,
+          approvalNotes: String,
+          rejectedAt: Date,
+          rejectedBy: mongoose.Schema.Types.ObjectId,
+          rejectionReason: String
         },
         _id: false // Disable automatic ID for sub-documents
       }

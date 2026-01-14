@@ -62,14 +62,17 @@ exports.createOrder = async (req, res) => {
         message: 'Order value must be a positive number'
       });
     }
-
     // Ensure milestones is an array
     const milestonesArray = Array.isArray(milestones) ? milestones : [];
 
     // Validate milestone structure and percentages (name + percentage)
-    const processedMilestones = milestonesArray.map((m) => ({
+    const processedMilestones = milestonesArray.map((m, idx) => ({
       name: m.name,
-      percentage: Number(m.percentage)
+      percentage: Number(m.percentage),
+      // Calculate amount based on percentage of total order value
+      amount: Math.round(numericValue * (Number(m.percentage) / 100)),
+      // First milestone is PENDING (available for work), rest are LOCKED (waiting for previous completion)
+      status: idx === 0 ? 'PENDING' : 'LOCKED'
     }));
 
     const milestonesValidation = Order.validateMilestones(processedMilestones);
@@ -474,140 +477,98 @@ exports.lenderApproveOrder = async (req, res) => {
       });
     }
 
+    // Check if milestones already exist (to prevent duplicate creation on double-click)
+    const existingMilestones = await Milestone.find({ order_id: order._id });
+    if (existingMilestones.length > 0) {
+      console.log('INFO: Milestones already exist for this order, skipping creation');
+      return res.status(200).json({
+        success: true,
+        message: 'Order already approved with milestones created.',
+        order: {
+          id: order._id,
+          order_id: order.order_id,
+          status: ORDER_STATUS.LENDER_APPROVED,
+          milestones: existingMilestones.length
+        }
+      });
+    }
+
     // Update order status to LENDER_APPROVED
     order.status = ORDER_STATUS.LENDER_APPROVED;
     order.lender_approval_status = 'APPROVED';
     await order.save();
     console.log('SUCCESS: Order status updated to LENDER_APPROVED');
 
-    // Process milestone-wise approval
-    if (milestone_timelines && Array.isArray(milestone_timelines) && milestone_timelines.length > 0) {
-      try {
-        const approvalDate = new Date();
-        const milestonesToCreate = [];
-        
-        // Count how many milestones already exist for this order
-        const existingMilestoneCount = await Milestone.countDocuments({ order_id: order._id });
-        console.log(`[lenderApproveOrder] Existing milestones for order ${order.order_id}:`, existingMilestoneCount);
-
-        // Only create milestones for the ones in milestone_timelines
-        for (let i = 0; i < milestone_timelines.length; i++) {
-          const timelineItem = milestone_timelines[i];
-          console.log(`[lenderApproveOrder] Processing milestone ${i}: ${timelineItem.milestone_name}`);
-          
-          const orderMilestone = order.milestones.find(m => m.name === timelineItem.milestone_name);
-          
-          if (!orderMilestone) {
-            console.warn(`[lenderApproveOrder] Milestone ${timelineItem.milestone_name} not found in order`);
-            continue;
-          }
-          
-          const amount = (order.value * orderMilestone.percentage) / 100;
-          
-          let dueDate = null;
-          if (timelineItem.timeline_days) {
-            dueDate = new Date(approvalDate);
-            dueDate.setDate(dueDate.getDate() + timelineItem.timeline_days);
-          }
-          
-          // Calculate proper order number based on existing milestones
-          const milestoneOrder = existingMilestoneCount + i + 1;
-
-          milestonesToCreate.push({
-            order_id: order._id,
-            name: orderMilestone.name,
-            amount: amount,
-            percentage: orderMilestone.percentage,
-            status: existingMilestoneCount === 0 && i === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
-            order: milestoneOrder,
-            due_date: dueDate,
-            timeline_days: timelineItem.timeline_days,
-            lender_id: lenderId
-          });
-        }
-
-        if (milestonesToCreate.length > 0) {
-          await Milestone.insertMany(milestonesToCreate);
-          console.log(`[lenderApproveOrder] Created ${milestonesToCreate.length} milestone(s) for order ${order.order_id}`);
-        }
-
-        // Create notification for admin: LENDER_APPROVED_ORDER
-        await Notification.create({
-          user_id: null, // Admin notification (system-wide)
-          order_id: order._id,
-          type: 'LENDER_APPROVED_ORDER',
-          message: `Lender has approved order ${order.order_id}. Milestones created and ready for fund transfer.`,
-          read: false
-        });
-
-        // Create notification for supplier: LENDER_APPROVED_ORDER
-        await Notification.create({
-          user_id: order.created_by._id,
-          order_id: order._id,
-          type: 'LENDER_APPROVED_ORDER',
-          message: `Your order ${order.order_id} has been approved by the lender. Milestones are now active.`,
-          read: false
-        });
-
-        res.status(200).json({
-          success: true,
-          message: 'Order approved by lender successfully. Milestone created.',
-          order: {
-            id: order._id,
-            order_id: order.order_id,
-            buyer_name: order.buyer_name,
-            value: order.value,
-            delivery_date: order.delivery_date,
-            status: order.status,
-            lender_approval_status: order.lender_approval_status,
-            milestones_created: milestonesToCreate.length,
-            created_by: order.created_by,
-            lender_id: order.lender_id,
-            createdAt: order.createdAt,
-            updatedAt: order.updatedAt
-          },
-          milestones: milestonesToCreate.map(m => ({
-            name: m.name,
-            amount: m.amount,
-            percentage: m.percentage,
-            status: m.status
-          }))
-        });
-      } catch (milestoneError) {
-        console.error(`[lenderApproveOrder] Error creating milestones:`, milestoneError.message);
-        return res.status(500).json({
-          success: false,
-          message: 'Error creating milestones',
-          error: milestoneError.message
-        });
-      }
-    } else {
-      // No milestone_timelines provided - old behavior
-      console.log('No milestone_timelines provided, creating all milestones (legacy behavior)');
-      
+    // Create Milestone documents from the order's milestone breakdown
+    // The milestones were defined by supplier during order creation
+    try {
+      const approvalDate = new Date();
       const milestonesToCreate = [];
-      if (order.milestones && Array.isArray(order.milestones)) {
-        order.milestones.forEach((milestone, index) => {
-          const amount = (order.value * milestone.percentage) / 100;
-          milestonesToCreate.push({
-            order_id: order._id,
-            name: milestone.name,
-            amount: amount,
-            percentage: milestone.percentage,
-            status: index === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED,
-            order: index + 1,
-            lender_id: lenderId
-          });
-        });
+      
+      console.log(`[lenderApproveOrder] Creating ${order.milestones.length} milestone documents for order ${order.order_id}`);
+      console.log(`[lenderApproveOrder] Timeline data received:`, milestone_timelines);
+
+      // Create milestone documents for ALL milestones in the order
+      for (let i = 0; i < order.milestones.length; i++) {
+        const orderMilestone = order.milestones[i];
+        console.log(`[lenderApproveOrder] Processing milestone ${i + 1}: ${orderMilestone.name}`);
+        
+        const amount = (order.value * orderMilestone.percentage) / 100;
+        
+        // First milestone is PENDING (can start work), others are LOCKED (waiting for previous)
+        const status = i === 0 ? MILESTONE_STATUS.PENDING : MILESTONE_STATUS.LOCKED;
+
+        // Get timeline for this milestone from request (only for first milestone during approval)
+        const timelineDays = milestone_timelines && milestone_timelines[i] ? Number(milestone_timelines[i]) : null;
+        const dueDate = timelineDays && i === 0 ? new Date(approvalDate.getTime() + timelineDays * 24 * 60 * 60 * 1000) : null;
+
+        const milestoneDoc = {
+          order_id: order._id,
+          name: orderMilestone.name,
+          amount: amount,
+          percentage: orderMilestone.percentage,
+          order: i + 1, // Sequential order: 1, 2, 3, ...
+          status: status
+        };
+
+        // Add timeline fields only if provided
+        if (timelineDays) {
+          milestoneDoc.timeline_days = timelineDays;
+        }
+        if (dueDate) {
+          milestoneDoc.due_date = dueDate;
+        }
+
+        milestonesToCreate.push(milestoneDoc);
+        console.log(`[lenderApproveOrder] Prepared milestone ${i + 1}: ${orderMilestone.name}, status: ${status}, amount: ${amount}, timeline: ${timelineDays} days`);
       }
 
       if (milestonesToCreate.length > 0) {
         await Milestone.insertMany(milestonesToCreate);
+        console.log(`[lenderApproveOrder] Created ${milestonesToCreate.length} milestone(s) for order ${order.order_id}`);
       }
+
+      // Create notification for admin: LENDER_APPROVED_ORDER
+      await Notification.create({
+        user_id: null, // Admin notification (system-wide)
+        order_id: order._id,
+        type: 'LENDER_APPROVED_ORDER',
+        message: `Lender has approved order ${order.order_id}. Milestones created and ready for fund transfer.`,
+        read: false
+      });
+
+      // Create notification for supplier: LENDER_APPROVED_ORDER
+      await Notification.create({
+        user_id: order.created_by._id,
+        order_id: order._id,
+        type: 'LENDER_APPROVED_ORDER',
+        message: `Your order ${order.order_id} has been approved by the lender. Milestones are now active.`,
+        read: false
+      });
 
       res.status(200).json({
         success: true,
-        message: 'Order approved by lender successfully. All milestones created.',
+        message: 'Order approved by lender successfully. Milestones created.',
         order: {
           id: order._id,
           order_id: order.order_id,
@@ -628,6 +589,13 @@ exports.lenderApproveOrder = async (req, res) => {
           percentage: m.percentage,
           status: m.status
         }))
+      });
+    } catch (milestoneError) {
+      console.error(`[lenderApproveOrder] Error creating milestones:`, milestoneError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Error creating milestones',
+        error: milestoneError.message
       });
     }
   } catch (error) {
@@ -720,11 +688,12 @@ exports.lockFunds = async (req, res) => {
       });
     }
 
-    // Lock funds
+    // Lock funds and unlock ONLY the first milestone's funds (stepwise release)
     order.funds_locked = true;
+    order.current_unlocked_milestone = 1; // Only milestone 1 funds are available initially
     await order.save();
 
-    console.log('[lockFunds] SUCCESS - Funds locked for order:', order.order_id);
+    console.log('[lockFunds] SUCCESS - Funds locked for order:', order.order_id, '| Unlocked milestone:', order.current_unlocked_milestone);
 
     // Create LOCK transaction in mock escrow ledger
     // This records that the full order value is now reserved in escrow
@@ -733,7 +702,7 @@ exports.lockFunds = async (req, res) => {
       milestone_id: null, // LOCK transactions don't associate with a specific milestone
       type: TRANSACTION_TYPE.LOCK,
       amount: order.value,
-      description: `Order ${order.order_id} - Funds locked by admin. Lender: ${order.lender_id?.name || 'N/A'}. Total: $${order.value}`,
+      description: `Order ${order.order_id} - Funds locked by admin (Stepwise Release). Total: $${order.value}. Milestone 1 ($${(order.value * order.milestones[0].percentage / 100).toFixed(2)}) funds available now.`,
       status: 'RECORDED'
     });
 
@@ -741,7 +710,7 @@ exports.lockFunds = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Funds locked successfully. Transaction recorded in ledger.',
+      message: 'Funds locked successfully. Milestone 1 funds are now available. Transaction recorded in ledger.',
       order: {
         id: order._id,
         order_id: order.order_id,
@@ -749,6 +718,7 @@ exports.lockFunds = async (req, res) => {
         value: order.value,
         status: order.status,
         funds_locked: order.funds_locked,
+        current_unlocked_milestone: order.current_unlocked_milestone,
         lender: order.lender_id
       },
       transaction: {

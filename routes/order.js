@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createOrder, getAllOrders, approveOrder, lenderApproveOrder, lockFunds, repayOrder } = require('../controllers/orderController');
 const { getOrderMilestones } = require('../controllers/milestoneController');
+const { getOrderTransactions } = require('../controllers/transactionController');
 const { protect, supplierOnly, adminOnly, lenderOnly } = require('../middleware/auth');
 
 /**
@@ -47,5 +48,9 @@ router.patch('/:id/repay', protect, adminOnly, repayOrder);
 // Get milestones for order - nested route (Phase 8 - Frontend support)
 // GET /api/orders/:id/milestones
 router.get('/:orderId/milestones', protect, getOrderMilestones);
+
+// Get transactions for order - nested route
+// GET /api/orders/:id/transactions
+router.get('/:orderId/transactions', protect, getOrderTransactions);
 
 module.exports = router;

@@ -5,6 +5,14 @@
   </div>
 </div>
 
+<!-- Milestones Pending Approval Section -->
+<div class="panel">
+  <h2>Milestones Pending Your Approval</h2>
+  <div id="lender-pending-milestones">
+    <p>Loading milestones...</p>
+  </div>
+</div>
+
 <!-- Approval Modal -->
 <div id="lender-approval-modal" class="modal" style="display: none;">
   <div class="modal-content" style="max-width: 600px;">
@@ -78,7 +86,7 @@
               <p>Requested on: ${new Date(order.createdAt).toLocaleString()}</p>
             </div>
             <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-              <button onclick="openApprovalModal('${order.id}')" class="btn-success" style="flex: 1; padding: 0.5rem;">✓ Approve</button>
+              <button onclick="openApprovalModal('${order.id}')" class="btn-success approve-order-btn" data-order-id="${order.id}" style="flex: 1; padding: 0.5rem;">✓ Approve</button>
               <button onclick="openRejectionModal('${order.id}')" class="btn-danger" style="flex: 1; padding: 0.5rem;">✗ Reject</button>
             </div>
           </div>
@@ -221,8 +229,113 @@
       currentOrderId = null;
     }
 
+    // Render pending milestones for lender approval (2nd milestone onwards)
+    async function loadPendingMilestones() {
+      const container = document.getElementById('lender-pending-milestones');
+      if (!container) return;
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        container.innerHTML = '<p class="error">Please login as a lender to view milestones.</p>';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/lenders/pending-milestones`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!res.ok) {
+          if (res.status === 401) {
+            container.innerHTML = '<p class="error">Session expired. Please refresh the page and login again.</p>';
+          } else {
+            container.innerHTML = `<p class="error">Error loading milestones (${res.status})</p>`;
+          }
+          return;
+        }
+        
+        const data = await res.json();
+        if (data.milestones && data.milestones.length > 0) {
+          renderPendingMilestones(data.milestones);
+        } else {
+          container.innerHTML = '<p class="empty-state">No pending milestones. All milestones are either completed or awaiting supplier invoice.</p>';
+        }
+      } catch (err) {
+        console.error('Error loading pending milestones:', err);
+        container.innerHTML = '<p class="error">Error connecting to server.</p>';
+      }
+    }
+
+    function renderPendingMilestones(milestones) {
+      const container = document.getElementById('lender-pending-milestones');
+      if (!container) return;
+
+      container.innerHTML = `
+        <div style="margin-bottom: 1rem;">
+          <p><strong>You have ${milestones.length} milestone${milestones.length !== 1 ? 's' : ''} ready for approval</strong></p>
+        </div>
+        ${milestones.map(m => `
+          <div class="order-card" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+              <div>
+                <h3 style="margin: 0;">${m.name}</h3>
+                <p style="margin: 0.25rem 0 0 0; color: #666;">Order: ${m.order_id}</p>
+              </div>
+              <span style="padding: 0.25rem 0.75rem; background: #fef3c7; border-radius: 3px; color: #92400e; font-weight: 600; font-size: 0.85rem;">Pending Your Approval</span>
+            </div>
+            <div style="margin-bottom: 0.75rem;">
+              <p style="margin: 0; color: #666;"><strong>Amount:</strong> $${m.amount.toLocaleString()}</p>
+              <p style="margin: 0.25rem 0 0 0; color: #666;"><strong>Timeline:</strong> ${m.timeline_days} days</p>
+              <p style="margin: 0.25rem 0 0 0; color: #666;"><strong>Supplier:</strong> ${m.supplier_name}</p>
+              <p style="margin: 0.25rem 0 0 0; color: #666;"><strong>Invoice Status:</strong> ${m.proof_verification_status === 'VERIFIED' ? '✓ Verified' : m.proof_verification_status === 'PENDING' ? '⏳ Under Review' : '✗ Rejected'}</p>
+            </div>
+            <button onclick="approveMilestoneFlow('${m.id}', '${m.name}')" class="btn-success" style="width: 100%; padding: 0.75rem; margin-top: 0.5rem;">✓ Approve Milestone</button>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    // Approve milestone for lender (2nd milestone onwards)
+    async function approveMilestoneFlow(milestoneId, milestoneName) {
+      if (!confirm(`Approve milestone "${milestoneName}"?\\n\\nThis will allow the supplier to proceed with this milestone.`)) {
+        return;
+      }
+
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        alert('Please login first.');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/milestones/${milestoneId}/approve`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`✓ Milestone "${milestoneName}" approved!`);
+          loadPendingMilestones();
+          // Also refresh main pending requests in case it affects anything
+          loadPendingRequests();
+        } else {
+          alert(data.message || 'Failed to approve milestone');
+        }
+      } catch (err) {
+        console.error('Error approving milestone:', err);
+        alert('Error approving milestone. Please try again.');
+      }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
       loadPendingRequests();
+      loadPendingMilestones();
 
       // Approval form handler
       const approvalForm = document.getElementById('lender-approval-form');
@@ -238,6 +351,12 @@
             return;
           }
 
+          // Disable submit button to prevent double-click
+          const submitBtn = approvalForm.querySelector('button[type="submit"]');
+          const originalText = submitBtn.textContent;
+          submitBtn.disabled = true;
+          submitBtn.textContent = '⏳ Processing...';
+
           try {
             const res = await fetch(`${API_BASE}/orders/${currentOrderId}/lender-approve`, {
               method: 'PATCH',
@@ -250,15 +369,19 @@
 
             const data = await res.json();
             if (res.ok) {
-              alert('Funding approved successfully! Funds locked.');
+              alert('Funding approved successfully! Milestones created.');
               closeApprovalModal();
               loadPendingRequests(); // Refresh list
             } else {
               errorEl.textContent = data.message || 'Failed to approve funding.';
+              submitBtn.disabled = false;
+              submitBtn.textContent = originalText;
             }
           } catch (err) {
             console.error('Error approving funding:', err);
             errorEl.textContent = 'Error connecting to server.';
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
           }
         });
       }
@@ -322,5 +445,6 @@
     window.openRejectionModal = openRejectionModal;
     window.closeApprovalModal = closeApprovalModal;
     window.closeRejectionModal = closeRejectionModal;
+    window.approveMilestoneFlow = approveMilestoneFlow;
   })();
 </script>

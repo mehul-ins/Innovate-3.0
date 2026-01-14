@@ -362,3 +362,54 @@ exports.rejectFunding = async (req, res) => {
     });
   }
 };
+
+// @desc    Get milestones pending lender approval (2nd milestone onwards)
+// @route   GET /api/lenders/pending-milestones
+// @access  Private (LENDER only)
+exports.getPendingMilestones = async (req, res) => {
+  try {
+    const lenderId = req.user.id;
+
+    // Get all milestones where:
+    // 1. Status is PENDING (not yet started)
+    // 2. Order's lender_id matches current lender
+    // 3. Milestone.order > 1 (not the first milestone - that's already approved)
+    const milestones = await Milestone.find({
+      status: MILESTONE_STATUS.PENDING
+    })
+      .populate({
+        path: 'order_id',
+        select: 'order_id lender_id created_by value delivery_date status',
+        match: { lender_id: lenderId },
+        populate: { path: 'created_by', select: 'name email' }
+      });
+
+    // Filter out milestones where order didn't match
+    const filteredMilestones = milestones.filter(m => m.order_id !== null && m.order > 1);
+
+    // Map to response format
+    const pendingMilestones = filteredMilestones.map(m => ({
+      id: m._id,
+      name: m.name,
+      order_id: m.order_id.order_id,
+      milestone_number: m.order,
+      amount: m.amount,
+      percentage: m.percentage,
+      timeline_days: m.timeline_days,
+      supplier_name: m.order_id.created_by.name,
+      proof_verification_status: m.proof_verification_status || 'NOT_UPLOADED'
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: pendingMilestones.length,
+      milestones: pendingMilestones
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching pending milestones',
+      error: error.message
+    });
+  }
+};

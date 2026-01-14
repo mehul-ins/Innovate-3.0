@@ -1,4 +1,14 @@
 <div class="panel">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <h2 style="margin: 0;">My Orders - Complete Details</h2>
+    <button onclick="refreshSupplierOrders()" style="padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">🔄 Refresh Orders</button>
+  </div>
+  <div id="supplier-orders-detailed">
+    <p>Loading your orders...</p>
+  </div>
+</div>
+
+<div class="panel">
   <h2>My Orders & Milestones</h2>
   <div id="supplier-milestones">
     <p>Loading milestones...</p>

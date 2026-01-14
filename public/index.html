@@ -78,6 +78,17 @@
                 <div id="action-buttons"></div>
             </div>
 
+            <!-- Admin: All Orders - Complete Details (ADMIN only) -->
+            <div class="panel" id="admin-all-orders-panel" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2 style="margin: 0;">All Orders - Complete Milestone Details</h2>
+                    <button onclick="refreshAdminOrders()" style="padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">🔄 Refresh Orders</button>
+                </div>
+                <div id="admin-all-orders">
+                    <p>Loading orders...</p>
+                </div>
+            </div>
+
             <!-- Orders Panel -->
             <div class="panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -351,5 +362,6 @@
     </div>
 
     <script src="app.js"></script>
+    <script src="admin-milestone-actions.js"></script>
 </body>
 </html>
