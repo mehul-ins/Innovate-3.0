@@ -96,24 +96,71 @@ async function loadLendersForModal() {
 // Authentication
 async function handleLogin(e) {
     e.preventDefault();
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    await login(email, password);
+    
+    // Check if quick login role is selected
+    const roleSelector = document.getElementById('role-selector');
+    const role = roleSelector ? roleSelector.value : '';
+    
+    if (role) {
+        // Use quick login credentials
+        const credentials = {
+            admin: { email: 'admin@test.com', password: 'password123' },
+            supplier: { email: 'supplier@test.com', password: 'password123' },
+            lender: { email: 'lender@test.com', password: 'password123' }
+        };
+        const { email, password } = credentials[role];
+        await login(email, password);
+    } else {
+        // Use manual login credentials
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        
+        if (!email || !password) {
+            document.getElementById('login-error').textContent = 'Please enter email and password or select a role';
+            return;
+        }
+        
+        await login(email, password);
+    }
 }
 
 async function quickLogin(email, password) {
     await login(email, password);
 }
 
+async function quickLoginByRole() {
+    const roleSelector = document.getElementById('role-selector');
+    const role = roleSelector.value;
+    
+    if (!role) {
+        alert('Please select a role');
+        return;
+    }
+    
+    const credentials = {
+        admin: { email: 'admin@test.com', password: 'password123' },
+        supplier: { email: 'supplier@test.com', password: 'password123' },
+        lender: { email: 'lender@test.com', password: 'password123' }
+    };
+    
+    const { email, password } = credentials[role];
+    await login(email, password);
+}
+
 async function login(email, password) {
     try {
+        console.log('Attempting login with:', email);
+        console.log('API URL:', `${API_BASE}/auth/login`);
+        
         const response = await fetch(`${API_BASE}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
 
+        console.log('Response status:', response.status);
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (response.ok) {
             authToken = data.token;
@@ -125,11 +172,13 @@ async function login(email, password) {
             
             showDashboard();
         } else {
-            document.getElementById('login-error').textContent = data.message || 'Login failed';
+            const errorMsg = data.message || 'Login failed';
+            console.error('Login failed:', errorMsg);
+            document.getElementById('login-error').textContent = errorMsg;
         }
     } catch (error) {
-        document.getElementById('login-error').textContent = 'Error connecting to server';
         console.error('Login error:', error);
+        document.getElementById('login-error').textContent = 'Error connecting to server: ' + error.message;
     }
 }
 

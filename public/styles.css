@@ -163,6 +163,10 @@ body {
     font-weight: 500;
 }
 
+.quick-login .form-group {
+    margin-bottom: 24px;
+}
+
 /* Forms */
 .form-group {
     margin-bottom: 20px;
@@ -419,12 +423,40 @@ button[type="button"]:hover {
 .quick-login button {
     display: block;
     width: 100%;
-    margin-bottom: 12px;
+    margin-bottom: 0;
     margin-right: 0;
+    margin-top: 24px;
     padding: 16px 24px;
     font-size: 16px;
     font-weight: 600;
     letter-spacing: 0.02em;
+}
+
+.quick-login .form-group {
+    margin-bottom: 18px;
+}
+
+.quick-login select {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(40, 40, 40, 0.9);
+    border: 1px solid rgba(255, 138, 51, 0.3);
+    border-radius: 8px;
+    color: #e8e8e8;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.quick-login select:hover {
+    border-color: rgba(255, 138, 51, 0.5);
+    background: rgba(50, 50, 50, 0.9);
+}
+
+.quick-login select:focus {
+    outline: none;
+    border-color: #ff8a33;
+    box-shadow: 0 0 0 3px rgba(255, 138, 51, 0.1);
 }
 
 /* Panel */
