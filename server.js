@@ -79,6 +79,16 @@ app.get('/admin/dashboard', (req, res) => {
   });
 });
 
+// Signup page
+app.get('/signup', (req, res) => {
+  res.render('layout', {
+    title: 'Sign Up - Supply Chain Financing',
+    view: 'signup',
+    role: null,
+    user: null
+  });
+});
+
 // Test route
 app.get('/api', (req, res) => {
   res.json({

@@ -36,6 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
         loginForm.addEventListener('submit', handleLogin);
     }
 
+    const signupForm = document.getElementById('signup-form');
+    if (signupForm) {
+        signupForm.addEventListener('submit', handleSignup);
+    }
+
     const createOrderForm = document.getElementById('create-order-form');
     if (createOrderForm) {
         createOrderForm.addEventListener('submit', handleCreateOrder);
@@ -179,6 +184,78 @@ async function login(email, password) {
     } catch (error) {
         console.error('Login error:', error);
         document.getElementById('login-error').textContent = 'Error connecting to server: ' + error.message;
+    }
+}
+
+// Signup Handler
+async function handleSignup(e) {
+    e.preventDefault();
+    
+    const errorDiv = document.getElementById('signup-error');
+    errorDiv.textContent = '';
+    
+    // Get form values
+    const password = document.getElementById('signup-password').value;
+    const confirmPassword = document.getElementById('signup-confirm-password').value;
+    
+    // Validate password match
+    if (password !== confirmPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        return;
+    }
+    
+    // Validate terms acceptance
+    if (!document.getElementById('signup-terms').checked ||
+        !document.getElementById('signup-verify').checked ||
+        !document.getElementById('signup-kyc').checked) {
+        errorDiv.textContent = 'Please accept all terms and conditions';
+        return;
+    }
+    
+    // Prepare signup data
+    const signupData = {
+        name: document.getElementById('signup-name').value,
+        email: document.getElementById('signup-email').value,
+        password: password,
+        phone: document.getElementById('signup-phone').value,
+        role: document.getElementById('signup-role').value,
+        businessName: document.getElementById('signup-business-name').value,
+        businessType: document.getElementById('signup-business-type').value,
+        taxId: document.getElementById('signup-tax-id').value,
+        businessRegistrationNumber: document.getElementById('signup-registration-number').value,
+        address: {
+            street: document.getElementById('signup-street').value,
+            city: document.getElementById('signup-city').value,
+            state: document.getElementById('signup-state').value,
+            pincode: document.getElementById('signup-pincode').value,
+            country: document.getElementById('signup-country').value
+        },
+        bankDetails: {
+            accountNumber: document.getElementById('signup-account-number').value,
+            ifscCode: document.getElementById('signup-ifsc').value,
+            bankName: document.getElementById('signup-bank-name').value,
+            accountHolderName: document.getElementById('signup-account-holder').value
+        }
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(signupData)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert('Account created successfully! Please login with your credentials.');
+            window.location.href = '/';
+        } else {
+            errorDiv.textContent = data.message || 'Signup failed. Please try again.';
+        }
+    } catch (error) {
+        console.error('Signup error:', error);
+        errorDiv.textContent = 'Error connecting to server. Please try again.';
     }
 }
 

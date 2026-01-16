@@ -20,15 +20,26 @@ const generateToken = (userId) => {
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, phone, businessName, businessType, taxId, businessRegistrationNumber, address, bankDetails } = req.body;
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    // Check if user already exists by email
+    const existingUserByEmail = await User.findOne({ email });
+    if (existingUserByEmail) {
       return res.status(400).json({
         success: false,
-        message: 'User already exists with this email'
+        message: 'An account with this email already exists. Please use a different email or login.'
       });
+    }
+
+    // Check if user already exists by phone
+    if (phone) {
+      const existingUserByPhone = await User.findOne({ phone });
+      if (existingUserByPhone) {
+        return res.status(400).json({
+          success: false,
+          message: 'An account with this phone number already exists. Please use a different phone number.'
+        });
+      }
     }
 
     // Create new user (password will be automatically hashed by pre-save hook)
@@ -36,7 +47,15 @@ exports.register = async (req, res) => {
       name,
       email,
       password,
-      role
+      role,
+      phone,
+      businessName,
+      businessType,
+      taxId,
+      businessRegistrationNumber,
+      address,
+      bankDetails,
+      verificationStatus: 'PENDING'
     });
 
     // Generate JWT token
